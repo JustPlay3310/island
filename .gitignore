@@ -1,2 +1,6 @@
 .DS_Store
 Thumbs.db
+# Claude 對話紀錄（僅保留初始開發那份，新 session 不追蹤）
+.claude/*.jsonl
+# 保留這份開發紀錄
+!.claude/833538ef-59de-4a7a-b4cf-44a543ee90f2.jsonl
