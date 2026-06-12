@@ -1060,7 +1060,11 @@ function goDownstairs(){
     const d=W.dungeons[key];
     W.ter=d.ter;W.obj=d.obj;W.aux=d.aux;W.disc=d.disc;
     W.enemies=d.enemies.map(e=>({...e}));
-    W.px=d.spawnX;W.py=d.spawnY;W.dungeonFloor=nextFloor;W.face=0;
+    // 落點：新樓層 STAIRS_UP 下方（spawn 已設在 cy+1，但若恰好在 STAIRS_UP 上則再往南 1 格）
+    W.px=d.spawnX;W.py=d.spawnY;
+    const ni1=W.py*SIZE+W.px;
+    if(W.obj[ni1]===O.STAIRS_UP&&W.py<SIZE-1&&W.ter[(W.py+1)*SIZE+W.px]===T.ROCKY){W.py+=1;}
+    W.dungeonFloor=nextFloor;W.face=1;
     camInit=false;mmDirty=true;discover();updateHUD();
     toast('🪨 B'+W.dungeonFloor+(nextFloor===4?' — 最深層!':' — 往更深處…'));
     fade.style.opacity=0;_transitioning=false;
@@ -1079,7 +1083,11 @@ function goUpstairs(){
     const d=W.dungeons[key];
     W.ter=d.ter;W.obj=d.obj;W.aux=d.aux;W.disc=d.disc;
     W.enemies=d.enemies.map(e=>({...e}));
-    W.px=d.spawnX;W.py=d.spawnY;W.dungeonFloor=prevFloor;W.face=0;
+    // 落點：上層 STAIRS_DOWN 旁邊 1 格（往北），避免立刻重觸發
+    W.px=d.spawnX;W.py=d.spawnY;
+    const ni2=W.py*SIZE+W.px;
+    if(W.obj[ni2]===O.STAIRS_DOWN&&W.py>0&&W.ter[(W.py-1)*SIZE+W.px]===T.ROCKY){W.py-=1;}
+    W.dungeonFloor=prevFloor;W.face=1;
     camInit=false;mmDirty=true;discover();updateHUD();
     toast('🪨 B'+W.dungeonFloor);
     fade.style.opacity=0;_transitioning=false;
@@ -1251,6 +1259,10 @@ window.addEventListener('keydown',e=>{
     else if(k==='arrowleft'||k==='a')navigatePanel('left');
     else if(k==='arrowright'||k==='d')navigatePanel('right');
     else if(k==='f'||k===' '||k==='enter')activatePanelFocus();
+    else if(k==='t')togglePanel('buildPanel');
+    else if(k==='r')togglePanel('craftPanel');
+    else if(k==='e')togglePanel('bagPanel');
+    else if(k==='q')togglePanel('journalPanel');
     else if(k==='escape')closePanels();
     return;
   }
@@ -1434,11 +1446,27 @@ function drawObj(x,y,sx,sy){
     ctx.fillStyle='rgba(255,255,200,.12)';ctx.fillRect(cx-12,sy+11,22,2);
   }else if(o===O.STAIRS_UP||o===O.STAIRS_DOWN){
     const up=o===O.STAIRS_UP;
-    ctx.fillStyle='#8d9187';ctx.fillRect(cx-12,sy+TS-10,24,7);
-    ctx.fillStyle='#6a6060';
-    for(let k=0;k<4;k++){const kx=cx-9+k*6,ky=sy+TS-10-k*3*(up?1:0);ctx.fillRect(kx,ky,5,3);}
-    ctx.fillStyle=up?'#70a870':'#a87070';
-    ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText(up?'▲':'▼',cx,sy+14);
+    // 背景光暈
+    const pulse=0.55+0.2*Math.sin((W.timeAcc||0)*3);
+    ctx.fillStyle=up?`rgba(80,200,160,${pulse})`:`rgba(220,120,80,${pulse})`;
+    ctx.beginPath();ctx.arc(cx,sy+TS/2,13,0,Math.PI*2);ctx.fill();
+    // 階梯格
+    ctx.fillStyle=up?'#2a6a58':'#7a3020';
+    const steps=3;
+    for(let k=0;k<steps;k++){
+      const sw=10+k*5,sh=3;
+      const sx2=cx-sw/2;
+      const sy2=up?(sy+TS-7-k*5):(sy+7+k*5);
+      ctx.fillRect(sx2,sy2,sw,sh);
+    }
+    // 方向箭頭
+    ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='center';
+    ctx.fillText(up?'▲':'▼',cx,sy+(up?15:TS-4));
+    // 目標樓層標籤
+    const destLabel=up?(W.inDungeon&&W.dungeonFloor<=1?'出':'B'+(W.dungeonFloor-1)):('B'+(W.dungeonFloor+1));
+    ctx.font='bold 9px sans-serif';
+    ctx.fillStyle=up?'#a0ffe0':'#ffc0a0';
+    ctx.fillText(destLabel,cx,sy+(up?TS-5:13));
   }else if(o===O.CHEST){
     const opened=(W.aux[i]||0)>0;
     ctx.fillStyle='#8a5a30';ctx.fillRect(cx-10,sy+TS-(opened?12:20),20,opened?8:14);
@@ -1682,11 +1710,12 @@ function loop(ts){
     // 時間推進
     const prevTod=W.tod;W.tod+=dt/DAY_LEN;if(W.tod>=1){W.tod-=1;}
     if(prevTod<0.24&&W.tod>=0.24){W.day++;toast('☀️ 第 '+W.day+' 天');}
-    // 移動（含 deadlock：新方向先轉身鎖定 300ms，短暫觸發只轉向不位移）
+    // 移動（含 deadlock：新方向先轉身鎖定，時間 = 移動冷卻/2）
     moveCd-=dt;
+    const speedMul=W.equipped.feet==='boots'?0.65:1;
     const d=heldDir>=0?heldDir:dirFromKeys();
     if(d>=0){
-      if(d!==prevDir){W.face=d;turnLock=0.30;}
+      if(d!==prevDir){W.face=d;turnLock=0.25*speedMul/2;}
       prevDir=d;
       turnLock=Math.max(0,turnLock-dt);
       if(turnLock<=0){tryMove(d);walkPhase+=dt*12;}
