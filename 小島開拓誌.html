@@ -1047,25 +1047,51 @@ function navigatePanel(dir){
 function activatePanelFocus(){
   const items=getPanelFocusables();if(items[panelFocusIdx])items[panelFocusIdx].click();
 }
+function _removeGrave(dp){
+  const gi=dp.y*SIZE+dp.x;
+  if(dp.dungeonIdx!==undefined){
+    if(W.inDungeon&&W.dungeonIdx===dp.dungeonIdx&&W.dungeonFloor===dp.floor){
+      if(W.obj[gi]===O.GRAVE)W.obj[gi]=O.NONE;
+    }else{
+      const dk=dp.dungeonIdx+'_'+dp.floor;
+      if(W.dungeons[dk]&&W.dungeons[dk].obj[gi]===O.GRAVE)W.dungeons[dk].obj[gi]=O.NONE;
+    }
+  }else{
+    if(W.obj[gi]===O.GRAVE)W.obj[gi]=O.NONE;
+  }
+}
 function playerDeath(){
   if(_dying)return;_dying=true;
-  // 收集所有物品
+
+  // ── Roguelike 懲罰：已有未取回墓碑 → 舊物品永久消失 ──
+  let hadOldGrave=false;
+  if(W.deathItems&&W.deathPos){
+    _removeGrave(W.deathPos);
+    W.deathItems=null;W.deathPos=null;
+    hadOldGrave=true;mmDirty=true;
+  }
+
+  // ── 收集當前物品 ──
   const items={};
   for(const k of Object.keys(W.inv))items[k]=(items[k]||0)+(W.inv[k]||0);
   for(const [slot,eq] of Object.entries(W.equipped)){if(eq)items[eq]=(items[eq]||0)+1;}
-  W.deathItems=items;
-  // 死亡點：地城內留在原地，地面才放地面
-  if(W.inDungeon){
-    W.deathPos={x:W.px,y:W.py,dungeonIdx:W.dungeonIdx,floor:W.dungeonFloor};
-    W.obj[W.py*SIZE+W.px]=O.GRAVE;
-    // 立即快取當前地城樓層（含墓碑）
-    W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={
-      ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
-  }else{
-    W.deathPos={x:W.px,y:W.py};
-    W.obj[W.py*SIZE+W.px]=O.GRAVE;
+  const hasItems=Object.values(items).some(n=>n>0);
+
+  // ── 放置新墓碑（有物品才放）──
+  if(hasItems){
+    W.deathItems=items;
+    if(W.inDungeon){
+      W.deathPos={x:W.px,y:W.py,dungeonIdx:W.dungeonIdx,floor:W.dungeonFloor};
+      W.obj[W.py*SIZE+W.px]=O.GRAVE;
+      W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={
+        ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
+    }else{
+      W.deathPos={x:W.px,y:W.py};
+      W.obj[W.py*SIZE+W.px]=O.GRAVE;
+    }
   }
   mmDirty=true;
+
   // 清空物品與裝備
   for(const k of Object.keys(W.inv))W.inv[k]=0;
   W.equipped={head:null,body:null,hand:null,hands:null,feet:null,weapon:null};
@@ -1082,7 +1108,9 @@ function playerDeath(){
       document.getElementById('depthCard').style.display='none';
     }
     camInit=false;mmDirty=true;discover();updateHUD();renderInv();renderBagPanel();
-    toast('💀 你倒下了…物品已遺落，找 🪦 墓碑可取回。');
+    if(hadOldGrave)toast('💀 再度倒下…遺落的物品已永久消失。');
+    else if(hasItems)toast('💀 你倒下了…找 🪦 墓碑可取回物品。');
+    else toast('💀 你倒下了。');
     fade.style.opacity=0;_dying=false;
   },800);
 }
