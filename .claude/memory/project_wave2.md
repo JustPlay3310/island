@@ -7,7 +7,7 @@ metadata:
   originSessionId: 833538ef-59de-4a7a-b4cf-44a543ee90f2
 ---
 
-**Wave 2 implemented as of 2026-06-12. Wave 3 implemented as of 2026-06-12.** Core file is `D:\桌面\island\小島開拓誌.html`; constants extracted to `lib/data.js`; worldgen extracted to `lib/worldgen.js`. Git repo initialized with 3 commits on master.
+**Wave 2 implemented as of 2026-06-12. Wave 3 implemented as of 2026-06-12.** Core file is `/home/user/桌面/island/小島開拓誌.html`; constants extracted to `lib/data.js`; worldgen extracted to `lib/worldgen.js`. Git repo initialized with 3 commits on master.
 
 **Why:** Scalability and maintainability — single file was growing too large. Future waves (dungeons, combat, metal tiers) need the split.
 
