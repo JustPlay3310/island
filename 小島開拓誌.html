@@ -153,6 +153,7 @@ canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;touch-ac
     <button class="abtn" id="btnBuild">建造<small>T</small></button>
     <button class="abtn" id="btnJournal">手帳<small>Q</small></button>
     <button class="abtn" id="btnAct">互動<small>F</small></button>
+    <button class="abtn" id="btnFight" style="background:#f5d4a8;border-color:#8a3a18;color:#5c2010">使用<small>G</small></button>
   </div>
 </div>
 
@@ -286,7 +287,8 @@ function sfx(kind){
     build:[300,200,'triangle',.1],eat:[660,900,'sine',.07],
     quest:[523,784,'sine',.12],step:[160,130,'sine',.02],
     no:[220,150,'sawtooth',.07],ruin:[392,660,'triangle',.12],
-    tame:[520,660,'triangle',.1]
+    tame:[520,660,'triangle',.1],
+    splash:[380,100,'sine',.055],fish_ok:[440,880,'triangle',.12]
   }[kind]||[440,440,'sine',.06];
   const o=AC.createOscillator(),g=AC.createGain();
   o.type=P[2];o.frequency.setValueAtTime(P[0],t);
@@ -508,7 +510,15 @@ function renderCraftPanel(){renderCraftTabs();renderCraftList();}
 function doCraft(recipe){
   if(!canAfford(recipe.cost)){toast('材料不足:'+costStr(recipe.cost));sfx('no');return;}
   for(const k in recipe.cost)W.inv[k]-=recipe.cost[k];
-  for(const k in recipe.gives)W.inv[k]=(W.inv[k]||0)+recipe.gives[k];
+  if(!W.invDur)W.invDur={};
+  for(const k in recipe.gives){
+    W.inv[k]=(W.inv[k]||0)+recipe.gives[k];
+    const _def=EQUIP_DEF[k];
+    if(_def&&_def.durability!=null){
+      if(!W.invDur[k])W.invDur[k]=[];
+      for(let _i=0;_i<recipe.gives[k];_i++)W.invDur[k].push(_def.durability);
+    }
+  }
   sfx('build');
   const items=Object.keys(recipe.gives).map(k=>EQUIP_DEF[k]?(EQUIP_DEF[k].ico+' '+EQUIP_DEF[k].name):recipe.ico+' '+recipe.name);
   toast('製作完成:'+items.join('、'));
@@ -542,16 +552,40 @@ function renderBagPanel(){
     desc.textContent='效果:'+lines.join(' · ');
     slotsEl.appendChild(desc);
   }
-  // 未裝備的裝備品
+  // 未裝備的裝備品（每件分開顯示以反映個別耐久）
   const invEqEl=document.getElementById('invEquipList');invEqEl.innerHTML='';
-  const available=Object.keys(EQUIP_DEF).filter(k=>(W.inv[k]||0)>0);
-  if(available.length){
+  const hasInvEq=Object.keys(EQUIP_DEF).some(k=>(W.inv[k]||0)>0);
+  if(hasInvEq){
     const title=document.createElement('b');title.textContent='可裝備的物品';invEqEl.appendChild(title);
-    for(const k of available){
-      const def=EQUIP_DEF[k];
-      const d=document.createElement('div');d.className='eitem';
-      d.innerHTML=`<span class="eitem-ico">${def.ico}</span><div style="flex:1"><span class="eitem-lbl">${def.name}</span><div class="eitem-desc">${def.desc}</div></div><span style="font-size:11px;color:#8a7a52;margin-right:6px">×${W.inv[k]}</span><button class="eq-btn" onclick="equipItem('${k}')">裝備</button>`;
-      invEqEl.appendChild(d);
+    for(const [kid,def] of Object.entries(EQUIP_DEF)){
+      const cnt=W.inv[kid]||0;if(!cnt)continue;
+      if(def.durability!=null){
+        // 有耐久的裝備：每件獨立一格
+        const durArr=Array.isArray(W.invDur&&W.invDur[kid])?[...W.invDur[kid]]:[];
+        // 從陣列末尾顯示（pop 取最後一個）
+        for(let _i=durArr.length-1;_i>=0;_i--){
+          const dur=durArr[_i];
+          const col=dur/def.durability>0.5?'#5a9050':dur/def.durability>0.25?'#c4a030':'#c04030';
+          const d=document.createElement('div');d.className='eitem';
+          d.innerHTML=`<span class="eitem-ico">${def.ico}</span><div style="flex:1"><span class="eitem-lbl">${def.name}</span><span style="font-size:10px;font-weight:700;color:${col};margin-left:4px">${dur}/${def.durability}</span><div class="eitem-desc">${def.desc}</div></div>`;
+          const btn=document.createElement('button');btn.className='eq-btn';btn.textContent='裝備';
+          btn.onclick=()=>equipItem(kid);d.appendChild(btn);invEqEl.appendChild(d);
+        }
+        // 未追蹤的新品（應該很少出現，但保險起見）
+        const freshCnt=Math.max(0,cnt-durArr.length);
+        for(let _i=0;_i<freshCnt;_i++){
+          const d=document.createElement('div');d.className='eitem';
+          d.innerHTML=`<span class="eitem-ico">${def.ico}</span><div style="flex:1"><span class="eitem-lbl">${def.name}</span><span style="font-size:10px;font-weight:700;color:#5a9050;margin-left:4px">${def.durability}/${def.durability}</span><div class="eitem-desc">${def.desc}</div></div>`;
+          const btn=document.createElement('button');btn.className='eq-btn';btn.textContent='裝備';
+          btn.onclick=()=>equipItem(kid);d.appendChild(btn);invEqEl.appendChild(d);
+        }
+      }else{
+        // 無耐久裝備（帽子、外套等）：合并顯示數量
+        const d=document.createElement('div');d.className='eitem';
+        d.innerHTML=`<span class="eitem-ico">${def.ico}</span><div style="flex:1"><span class="eitem-lbl">${def.name}</span><div class="eitem-desc">${def.desc}</div></div><span style="font-size:11px;color:#8a7a52;margin-right:6px">×${cnt}</span>`;
+        const btn=document.createElement('button');btn.className='eq-btn';btn.textContent='裝備';
+        btn.onclick=()=>equipItem(kid);d.appendChild(btn);invEqEl.appendChild(d);
+      }
     }
   }
   // 糧食
@@ -564,13 +598,29 @@ function equipItem(id){
   if(!(W.inv[id]>0)){toast('沒有這個物品了');return;}
   const def=EQUIP_DEF[id];if(!def){toast('無法裝備');return;}
   const slot=def.slot;
-  if(W.equipped[slot]){W.inv[W.equipped[slot]]=(W.inv[W.equipped[slot]]||0)+1;}
-  W.inv[id]--;W.equipped[slot]=id;W.equipDur[slot]=def.durability;
+  if(!W.invDur)W.invDur={};
+  // 先讀取新裝備的耐久（在歸還舊裝備之前），避免舊裝備耐久污染
+  const arr=Array.isArray(W.invDur[id])?W.invDur[id]:[];
+  const newDur=arr.length>0?arr.pop():(def.durability!=null?def.durability:null);
+  if(arr.length)W.invDur[id]=arr;else delete W.invDur[id];
+  // 歸還舊裝備並記錄耐久
+  const prev=W.equipped[slot];const prevDur=W.equipDur[slot];
+  W.inv[id]--;W.equipped[slot]=id;W.equipDur[slot]=newDur;
+  if(prev){
+    W.inv[prev]=(W.inv[prev]||0)+1;
+    if(EQUIP_DEF[prev]&&EQUIP_DEF[prev].durability!=null&&prevDur!=null){
+      if(!W.invDur[prev])W.invDur[prev]=[];W.invDur[prev].push(prevDur);
+    }
+  }
   sfx('build');toast(def.ico+' '+def.name+' 裝備完成!');
   renderBagPanel();renderInv();checkQuest();
 }
 function unequipSlot(slot){
   const eq=W.equipped[slot];if(!eq)return;
+  if(!W.invDur)W.invDur={};
+  if(EQUIP_DEF[eq]&&EQUIP_DEF[eq].durability!=null&&W.equipDur[slot]!=null){
+    if(!W.invDur[eq])W.invDur[eq]=[];W.invDur[eq].push(W.equipDur[slot]);
+  }
   W.inv[eq]=(W.inv[eq]||0)+1;W.equipped[slot]=null;W.equipDur[slot]=null;
   sfx('pick');toast(EQUIP_DEF[eq].ico+' 已卸下');
   renderBagPanel();renderInv();
@@ -588,80 +638,67 @@ function wearEquip(slot,amount){
 }
 window.equipItem=equipItem;window.unequipSlot=unequipSlot;
 
-/* ══════════ 紙娃娃 ══════════ */
+/* ══════════ 角色縮圖（同遊戲內風格，朝下走路） ══════════ */
 const dollCv=document.getElementById('dollCanvas');
 const dc=dollCv.getContext('2d');
 function drawDoll(){
+  if(!W)return;
   const W2=80,H2=120;
   dc.clearRect(0,0,160,240);
   dc.save();dc.scale(2,2);
-  // 背景
-  dc.fillStyle='#e9dec4';dc.fillRect(0,0,W2,H2);
-  dc.fillStyle='rgba(100,130,80,.08)';for(let i=0;i<6;i++){dc.beginPath();dc.arc(W2/2+Math.sin(i)*20,H2-10+Math.cos(i)*4,3,0,Math.PI*2);dc.fill();}
-  const cx=W2/2,cy=H2/2+14;
-  // 影子
-  dc.fillStyle='rgba(0,0,0,.13)';dc.beginPath();dc.ellipse(cx,cy+18,11,4,0,0,Math.PI*2);dc.fill();
-  // 腿
-  const legCol=W.equipped.body?'#4a5060':'#8a5030';
-  dc.fillStyle=legCol;dc.fillRect(cx-7,cy+14,5,11);dc.fillRect(cx+2,cy+14,5,11);
-  // 鞋（靴子換色）
-  dc.fillStyle=W.equipped.feet==='boots'?'#a07850':'#4a3828';
-  dc.fillRect(cx-8,cy+23,7,4);dc.fillRect(cx+1,cy+23,7,4);
-  if(W.equipped.feet==='boots'){dc.fillStyle='rgba(255,255,255,.25)';dc.fillRect(cx-8,cy+23,7,1);}
-  // 身體
-  const bodyCol={shirt:'#8fb5d4',coat:'#5a7090',wool_coat:'#c4a87a'}[W.equipped.body]||'#c4744a';
-  dc.fillStyle=bodyCol;
-  dc.beginPath();dc.moveTo(cx-12,cy+16);dc.quadraticCurveTo(cx-14,cy,cx,cy-4);dc.quadraticCurveTo(cx+14,cy,cx+12,cy+16);dc.closePath();dc.fill();
-  // 衣服細節
-  if(W.equipped.body==='coat'||W.equipped.body==='wool_coat'){
-    dc.fillStyle='rgba(255,255,255,.18)';
-    dc.fillRect(cx-2,cy-2,4,14);
+  // 草地背景
+  dc.fillStyle='#8fb56b';dc.fillRect(0,0,W2,H2);
+  dc.fillStyle='#7da462';
+  for(let gy=0;gy<H2;gy+=10)for(let gx=0;gx<W2;gx+=10){
+    const hv=(Math.sin(gx*7.3+gy*13.7)*.5+.5);
+    if(hv>.55)dc.fillRect(gx+(hv*6|0),gy+(hv*8|0)%8,4,3);
   }
+  dc.fillStyle='rgba(0,0,0,.07)';dc.fillRect(0,H2-20,W2,20);
+  const px=W2/2,py=H2*.58;
+  const bob=Math.sin((W.timeAcc||0)*8)*1.8;
+  // 影子
+  dc.fillStyle='rgba(0,0,0,.22)';dc.beginPath();dc.ellipse(px,py+13,9,3.5,0,0,Math.PI*2);dc.fill();
+  // 身體
+  const bodyCol={shirt:'#6690b8',coat:'#4a6080',wool_coat:'#b89868'}[W.equipped.body]||'#c4744a';
+  dc.fillStyle=bodyCol;dc.beginPath();dc.moveTo(px-8,py+12);dc.quadraticCurveTo(px,py-4+bob,px+8,py+12);dc.closePath();dc.fill();
   // 頭
-  dc.fillStyle='#f0d6b0';dc.beginPath();dc.arc(cx,cy-14,9,0,Math.PI*2);dc.fill();
-  // 表情
-  dc.fillStyle='#2b3a30';dc.beginPath();dc.arc(cx-3,cy-14,1.3,0,Math.PI*2);dc.fill();dc.beginPath();dc.arc(cx+3,cy-14,1.3,0,Math.PI*2);dc.fill();
-  dc.strokeStyle='#5a3a20';dc.lineWidth=1;dc.beginPath();dc.arc(cx,cy-11,3,0.2,Math.PI-0.2);dc.stroke();
+  dc.fillStyle='#f0d6b0';dc.beginPath();dc.arc(px,py-6+bob,7,0,Math.PI*2);dc.fill();
   // 帽子
   if(W.equipped.head==='hat'){
-    dc.fillStyle='#7da462';dc.beginPath();dc.ellipse(cx,cy-21,14,5,0,0,Math.PI*2);dc.fill();dc.beginPath();dc.arc(cx,cy-25,8,0,Math.PI*2);dc.fill();
-    dc.strokeStyle='rgba(255,255,255,.5)';dc.lineWidth=1.5;dc.beginPath();dc.moveTo(cx-8,cy-22);dc.lineTo(cx+8,cy-22);dc.stroke();
+    dc.fillStyle='#7da462';dc.beginPath();dc.ellipse(px,py-9+bob,11,4,0,0,Math.PI*2);dc.fill();
+    dc.beginPath();dc.arc(px,py-12+bob,6,0,Math.PI*2);dc.fill();
+    dc.strokeStyle='rgba(255,255,255,.4)';dc.lineWidth=1.5;
+    dc.beginPath();dc.moveTo(px-8,py-10+bob);dc.lineTo(px+8,py-10+bob);dc.stroke();
   }else{
-    dc.fillStyle='#d8a94e';dc.beginPath();dc.ellipse(cx,cy-21,13,4.5,0,0,Math.PI*2);dc.fill();dc.beginPath();dc.arc(cx,cy-24,7,0,Math.PI*2);dc.fill();
+    dc.fillStyle='#d8a94e';dc.beginPath();dc.ellipse(px,py-9+bob,11,4,0,0,Math.PI*2);dc.fill();
+    dc.beginPath();dc.arc(px,py-12+bob,6,0,Math.PI*2);dc.fill();
   }
-  // 工具
+  // 眼睛（朝下）
+  dc.fillStyle='#2b3a30';
+  dc.beginPath();dc.arc(px-2.5,py-5+bob,1.3,0,Math.PI*2);dc.fill();
+  dc.beginPath();dc.arc(px+2.5,py-5+bob,1.3,0,Math.PI*2);dc.fill();
+  // 武器（劍，左側）
+  const wpn=W.equipped.weapon;
+  if(wpn&&wpn.includes('sword')){
+    dc.save();dc.translate(px-10,py+2+bob);
+    dc.strokeStyle=wpn==='iron_sword'?'#c0c0b0':wpn==='stone_sword'?'#9a9a8a':'#8a5a30';
+    dc.lineWidth=2;dc.beginPath();dc.moveTo(-1,-8);dc.lineTo(-1,6);dc.stroke();
+    dc.fillStyle='#7a5030';dc.fillRect(-4,-2,6,2);dc.restore();
+  }
+  // 工具（右側）
   const hand=W.equipped.hand;
   if(hand){
-    dc.save();dc.translate(cx+14,cy+4);
+    dc.save();dc.translate(px+10,py+2+bob);
     if(hand.includes('axe')){
-      dc.fillStyle='#6e4a2a';dc.fillRect(-1,-10,2,14);
-      dc.fillStyle='#8d9187';dc.beginPath();dc.moveTo(-1,-10);dc.lineTo(-7,-5);dc.lineTo(-7,-1);dc.lineTo(-1,-2);dc.closePath();dc.fill();
+      dc.fillStyle='#6e4a2a';dc.fillRect(-1,-6,2,10);
+      dc.fillStyle='#8d9187';dc.beginPath();dc.moveTo(-1,-6);dc.lineTo(-5,-2);dc.lineTo(-5,1);dc.lineTo(-1,-1);dc.closePath();dc.fill();
     }else if(hand.includes('pick')){
-      dc.fillStyle='#6e4a2a';dc.fillRect(-1,-10,2,14);
-      dc.fillStyle='#8d9187';dc.fillRect(-7,-11,14,3);
-      dc.beginPath();dc.moveTo(-7,-11);dc.lineTo(-10,-16);dc.lineTo(-5,-11);dc.fill();
-      dc.beginPath();dc.moveTo(7,-11);dc.lineTo(10,-16);dc.lineTo(5,-11);dc.fill();
-    }else if(hand==='needle'){
-      dc.strokeStyle='#9090b0';dc.lineWidth=1.5;dc.beginPath();dc.moveTo(0,-8);dc.lineTo(0,8);dc.stroke();
+      dc.fillStyle='#6e4a2a';dc.fillRect(-1,-6,2,10);dc.fillStyle='#8d9187';dc.fillRect(-5,-7,10,2);
     }else if(hand==='fishing_rod'){
-      dc.strokeStyle='#6e4a2a';dc.lineWidth=1.5;dc.beginPath();dc.moveTo(0,-10);dc.lineTo(0,8);dc.stroke();
-      dc.strokeStyle='#bbb';dc.lineWidth=0.8;dc.beginPath();dc.moveTo(0,-10);dc.bezierCurveTo(10,-4,10,4,8,8);dc.stroke();
+      dc.strokeStyle='#6e4a2a';dc.lineWidth=1.5;dc.beginPath();dc.moveTo(-1,-8);dc.lineTo(-1,7);dc.stroke();
+      dc.strokeStyle='#bbb';dc.lineWidth=0.8;dc.beginPath();dc.moveTo(-1,-8);dc.bezierCurveTo(7,-3,8,2,5,6);dc.stroke();
     }
     dc.restore();
-  }
-  // 武器（劍）
-  const wpnId=W.equipped.weapon;
-  if(wpnId&&wpnId.includes('sword')){
-    dc.save();dc.translate(cx-16,cy-2);
-    const sc=wpnId==='iron_sword'?'#c0c0b0':wpnId==='stone_sword'?'#9a9a8a':'#8a5a30';
-    dc.strokeStyle=sc;dc.lineWidth=2;dc.beginPath();dc.moveTo(0,-12);dc.lineTo(0,8);dc.stroke();
-    dc.fillStyle='#7a5030';dc.fillRect(-5,2,10,2);
-    dc.restore();
-  }
-  // 手套指示
-  if(W.equipped.hands==='gloves'){
-    dc.fillStyle='#7a5030';
-    dc.fillRect(cx-18,cy+2,5,7);dc.fillRect(cx+13,cy+2,5,7);
   }
   dc.restore();
 }
@@ -842,6 +879,19 @@ function enemyAction(e){
       e.hp=0;
       for(const drop of def.loot){if(Math.random()<drop.p)gain(drop.k,drop.n,{x:Math.floor(e.x),y:Math.floor(e.y)});}
       toast(def.ico+' '+def.name+'被打倒了!');sfx('quest');
+      if(e.kind==='dungeon_lord'){
+        // 地城魔王死亡後，在旁邊生成傳送門
+        let px2=Math.floor(e.x),py2=Math.floor(e.y);
+        outer2:for(let r=0;r<=5;r++)for(let _dy=-r;_dy<=r;_dy++)for(let _dx=-r;_dx<=r;_dx++){
+          if(r>0&&Math.abs(_dx)<r&&Math.abs(_dy)<r)continue;
+          const tx=px2+_dx,ty=py2+_dy;
+          if(tx>0&&ty>0&&tx<SIZE-1&&ty<SIZE-1&&W.ter[ty*SIZE+tx]===T.ROCKY&&W.obj[ty*SIZE+tx]===O.NONE){
+            px2=tx;py2=ty;break outer2;
+          }
+        }
+        W.obj[py2*SIZE+px2]=O.PORTAL;mmDirty=true;
+        setTimeout(()=>toast('🌀 傳送門開啟！踏上傳送門可直接回地表！'),600);
+      }
     }else{
       toast(def.ico+' '+def.name+' HP:'+e.hp+'/'+e.maxHp);
       const pdmg=Math.max(1,def.atk+Math.floor(Math.random()*2)-1-playerDefense());
@@ -940,7 +990,17 @@ function drawEnemy(e){
 /* ══════════ 死亡 / 地城 ══════════ */
 function collectDeathItems(){
   if(!W.deathItems)return;
-  for(const [k,n] of Object.entries(W.deathItems))if(n>0)W.inv[k]=(W.inv[k]||0)+n;
+  if(!W.invDur)W.invDur={};
+  for(const [k,n] of Object.entries(W.deathItems)){
+    if(n<=0)continue;
+    W.inv[k]=(W.inv[k]||0)+n;
+    // 裝備品從墓碑取回時以滿耐久度追蹤（死亡時耐久資訊已遺失）
+    const _def=EQUIP_DEF[k];
+    if(_def&&_def.durability!=null){
+      if(!W.invDur[k])W.invDur[k]=[];
+      for(let _i=0;_i<n;_i++)W.invDur[k].push(_def.durability);
+    }
+  }
   if(W.deathPos){
     const dp=W.deathPos,gi=dp.y*SIZE+dp.x;
     if(dp.dungeonIdx!==undefined){
@@ -981,38 +1041,114 @@ function renderStoragePanel(){
   const k=storageKey(currentStorageIdx);
   const st=W.storages[k]||(W.storages[k]={});
   const el=document.getElementById('storageBody');el.innerHTML='';
-  const allR=Object.keys(RESOURCES);
-  // 箱內
+  const allKeys=[...Object.keys(RESOURCES),...Object.keys(EQUIP_DEF)];
+  // ── 箱內 ──
   const sh=document.createElement('div');
   sh.style.cssText='font-weight:800;margin-bottom:6px;color:var(--moss)';sh.textContent='📦 箱內';
   el.appendChild(sh);
-  const stItems=allR.filter(k=>st[k]>0);
+  const stItems=allKeys.filter(rk=>(st[rk]||0)>0);
   if(!stItems.length){const em=document.createElement('div');em.style.cssText='color:#aaa;font-size:12px;padding:4px 0 8px';em.textContent='（空的）';el.appendChild(em);}
   for(const rk of stItems){
+    const n=st[rk]||0;
     const row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:4px;';
-    const res=RESOURCES[rk];
-    row.innerHTML=`<span style="width:22px;text-align:center">${res.ico}</span><span style="flex:1">${res.name}</span><b>${st[rk]}</b>`;
-    const btn=document.createElement('button');btn.className='rmake st-btn';btn.textContent='取出';
-    btn.onclick=()=>{W.inv[rk]=(W.inv[rk]||0)+(st[rk]||0);delete st[rk];renderStoragePanel();renderInv();};
-    row.appendChild(btn);el.appendChild(row);
+    row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+    const res=RESOURCES[rk]||EQUIP_DEF[rk];
+    row.innerHTML=`<span style="width:22px;text-align:center">${res.ico}</span><span style="flex:1">${res.name}</span><b>${n}</b>`;
+    if(n>1){
+      const b1=document.createElement('button');b1.className='rmake st-btn';b1.textContent='取1';
+      b1.onclick=()=>{
+        W.inv[rk]=(W.inv[rk]||0)+1;st[rk]--;if(st[rk]<=0)delete st[rk];
+        const def2=EQUIP_DEF[rk];
+        if(def2&&def2.durability!=null){if(!W.invDur)W.invDur={};(W.invDur[rk]=W.invDur[rk]||[]).push(def2.durability);}
+        renderStoragePanel();renderInv();
+      };
+      row.appendChild(b1);
+    }
+    const ba=document.createElement('button');ba.className='rmake st-btn';ba.textContent='取出';
+    ba.onclick=()=>{
+      W.inv[rk]=(W.inv[rk]||0)+n;delete st[rk];
+      const def2=EQUIP_DEF[rk];
+      if(def2&&def2.durability!=null){if(!W.invDur)W.invDur={};for(let _i=0;_i<n;_i++)(W.invDur[rk]=W.invDur[rk]||[]).push(def2.durability);}
+      renderStoragePanel();renderInv();
+    };
+    row.appendChild(ba);el.appendChild(row);
   }
-  // 分隔
+  // ── 分隔 ──
   const sep=document.createElement('hr');sep.style.margin='8px 0';el.appendChild(sep);
   const ih=document.createElement('div');
   ih.style.cssText='font-weight:800;margin-bottom:6px;color:var(--ink)';ih.textContent='🎒 背包（點存入）';
   el.appendChild(ih);
-  const invItems=allR.filter(rk=>(W.inv[rk]||0)>0);
-  if(!invItems.length){const em=document.createElement('div');em.style.cssText='color:#aaa;font-size:12px;padding:4px 0';em.textContent='（背包是空的）';el.appendChild(em);}
-  for(const rk of invItems){
+  // 已裝備的裝備品（可直接卸下存入）
+  for(const [slot,eq] of Object.entries(W.equipped)){
+    if(!eq)continue;
+    const def=EQUIP_DEF[eq];if(!def)continue;
     const row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:4px;';
-    const res=RESOURCES[rk];
-    row.innerHTML=`<span style="width:22px;text-align:center">${res.ico}</span><span style="flex:1">${res.name}</span><b>${W.inv[rk]}</b>`;
-    const btn=document.createElement('button');btn.className='rmake st-btn';btn.textContent='存入';
-    btn.style.background='#4a7a38';
-    btn.onclick=()=>{st[rk]=(st[rk]||0)+(W.inv[rk]||0);W.inv[rk]=0;renderStoragePanel();renderInv();};
+    row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:4px;background:#fff8e8;border-radius:6px;padding:3px 4px;';
+    row.innerHTML=`<span style="width:22px;text-align:center">${def.ico}</span><span style="flex:1">${def.name}<span style="font-size:10px;color:#888;margin-left:4px;">[裝備中]</span></span>`;
+    const btn=document.createElement('button');btn.className='rmake st-btn';btn.textContent='卸下存入';
+    btn.style.cssText='background:#7a5a28;color:#fff;white-space:nowrap';
+    btn.onclick=()=>{
+      // 直接卸入箱子：耐久資訊不存入 invDur（儲存箱不追蹤耐久，取出時恢復滿值）
+      W.equipped[slot]=null;W.equipDur[slot]=null;
+      st[eq]=(st[eq]||0)+1;
+      renderStoragePanel();renderBagPanel();
+    };
     row.appendChild(btn);el.appendChild(row);
+  }
+  // 背包中的素材與裝備品
+  const invItems=allKeys.filter(rk=>(W.inv[rk]||0)>0);
+  const hasAny=invItems.length>0||Object.values(W.equipped).some(v=>v);
+  if(!hasAny){const em=document.createElement('div');em.style.cssText='color:#aaa;font-size:12px;padding:4px 0';em.textContent='（背包是空的）';el.appendChild(em);}
+  for(const rk of invItems){
+    const n=W.inv[rk]||0;if(!n)continue;
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+    const res=RESOURCES[rk]||EQUIP_DEF[rk];
+    row.innerHTML=`<span style="width:22px;text-align:center">${res.ico}</span><span style="flex:1">${res.name}</span><b>${n}</b>`;
+    if(n>1){
+      const b1=document.createElement('button');b1.className='rmake st-btn';b1.textContent='存1';
+      b1.style.cssText='background:#3a7a28;color:#fff';
+      b1.onclick=()=>{
+        const def2=EQUIP_DEF[rk];
+        if(def2&&def2.durability!=null){if(!W.invDur)W.invDur={};(W.invDur[rk]=W.invDur[rk]||[]).pop();}
+        st[rk]=(st[rk]||0)+1;W.inv[rk]--;renderStoragePanel();renderInv();
+      };
+      row.appendChild(b1);
+      const bm=document.createElement('button');bm.className='rmake st-btn';bm.textContent='存多';
+      bm.style.cssText='background:#2a6010;color:#fff';
+      bm.onclick=()=>{
+        bm.style.display='none';b1.style.display='none';
+        const wrap=document.createElement('div');wrap.style.cssText='display:flex;align-items:center;gap:4px;margin-top:2px;';
+        const sl=document.createElement('input');sl.type='range';sl.min=1;sl.max=n;sl.value=n;sl.style.cssText='flex:1;min-width:60px';
+        const numEl=document.createElement('span');numEl.textContent=n;numEl.style.cssText='min-width:22px;text-align:right;font-weight:700';
+        sl.oninput=()=>{numEl.textContent=sl.value;};
+        const ok=document.createElement('button');ok.className='rmake st-btn';ok.textContent='確定';ok.style.cssText='background:#2a6010;color:#fff';
+        ok.onclick=()=>{
+          const qty=parseInt(sl.value);if(qty<=0){renderStoragePanel();return;}
+          const def2=EQUIP_DEF[rk];
+          if(def2&&def2.durability!=null&&W.invDur&&W.invDur[rk]){
+            for(let i=0;i<qty;i++)W.invDur[rk].pop();
+            if(!W.invDur[rk].length)delete W.invDur[rk];
+          }
+          st[rk]=(st[rk]||0)+qty;W.inv[rk]-=qty;renderStoragePanel();renderInv();
+        };
+        const ca=document.createElement('button');ca.className='rmake st-btn';ca.textContent='取消';
+        ca.onclick=()=>renderStoragePanel();
+        wrap.appendChild(sl);wrap.appendChild(numEl);wrap.appendChild(ok);wrap.appendChild(ca);
+        row.appendChild(wrap);
+      };
+      row.appendChild(bm);
+    }else{
+      const ba1=document.createElement('button');ba1.className='rmake st-btn';ba1.textContent='存入';
+      ba1.style.cssText='background:#3a7a28;color:#fff';
+      ba1.onclick=()=>{
+        const def2=EQUIP_DEF[rk];
+        if(def2&&def2.durability!=null){if(!W.invDur)W.invDur={};(W.invDur[rk]=W.invDur[rk]||[]).pop();}
+        st[rk]=(st[rk]||0)+1;W.inv[rk]=0;renderStoragePanel();renderInv();
+      };
+      row.appendChild(ba1);
+    }
+    el.appendChild(row);
   }
 }
 
@@ -1083,8 +1219,29 @@ function playerDeath(){
     if(W.inDungeon){
       W.deathPos={x:W.px,y:W.py,dungeonIdx:W.dungeonIdx,floor:W.dungeonFloor};
       W.obj[W.py*SIZE+W.px]=O.GRAVE;
+      // 把墓碑附近的敵人驅離，讓玩家有機會取回物品
+      {const gx=W.px,gy=W.py;
+      for(const e of (W.enemies||[])){
+        if(e.hp<=0)continue;
+        if(Math.hypot(e.x-gx,e.y-gy)<7){
+          e.state='idle';e.alertTimer=0;e.vx=0;e.vy=0;
+          for(let att=0;att<30;att++){
+            const ang=Math.random()*Math.PI*2,nd=10+Math.random()*8;
+            const nx=Math.round(gx+Math.cos(ang)*nd),ny=Math.round(gy+Math.sin(ang)*nd);
+            if(nx>1&&ny>1&&nx<SIZE-2&&ny<SIZE-2){
+              const ti=ny*SIZE+nx;
+              if(W.ter[ti]===T.ROCKY&&W.obj[ti]===O.NONE){e.x=nx+0.5;e.y=ny+0.5;break;}
+            }
+          }
+        }
+      }}
       W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={
         ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
+      // 死亡後清除其他樓層快取，迫使玩家重新攻略地城（只保留有墓碑的樓層）
+      const _deatKey=W.dungeonIdx+'_'+W.dungeonFloor;
+      for(const _k of Object.keys(W.dungeons)){
+        if(_k.startsWith(W.dungeonIdx+'_')&&_k!==_deatKey)delete W.dungeons[_k];
+      }
     }else{
       W.deathPos={x:W.px,y:W.py};
       W.obj[W.py*SIZE+W.px]=O.GRAVE;
@@ -1097,6 +1254,7 @@ function playerDeath(){
   W.equipped={head:null,body:null,hand:null,hands:null,feet:null,weapon:null};
   W.equipDur={head:null,body:null,hand:null,hands:null,feet:null,weapon:null};
   W.hp=Math.round(W.maxHp/2);
+  renderInv();renderBagPanel();
   sfx('no');
   const fade=document.getElementById('fade');fade.style.opacity=1;
   setTimeout(()=>{
@@ -1112,6 +1270,7 @@ function playerDeath(){
     else if(hasItems)toast('💀 你倒下了…找 🪦 墓碑可取回物品。');
     else toast('💀 你倒下了。');
     fade.style.opacity=0;_dying=false;
+    save();
   },800);
 }
 
@@ -1207,18 +1366,59 @@ function goUpstairs(){
 }
 
 function cropStage(i){return Math.min(2,Math.floor(W.aux[i]));}
+
+/* ══════════ 釣魚掉落表（greenW = 綠色區域寬度比例，越小越難）══════════ */
+const FISHING_LOOT=[
+  {items:()=>({raw_fish:1+Math.floor(Math.random()*2)}),   greenW:.52, w:30},
+  {items:()=>({fiber:2+Math.floor(Math.random()*2)}),      greenW:.46, w:22},
+  {items:()=>({seed:1+Math.floor(Math.random()*2)}),       greenW:.44, w:20},
+  {items:()=>({wood:2+Math.floor(Math.random()*3)}),       greenW:.34, w:16},
+  {items:()=>({stone:2+Math.floor(Math.random()*2)}),      greenW:.30, w:12},
+  {items:()=>({coal:1+Math.floor(Math.random()*2)}),       greenW:.22, w:8},
+  {items:()=>({sap:1+Math.floor(Math.random()*2)}),        greenW:.19, w:7},
+  {items:()=>({iron_ore:1+Math.floor(Math.random()*2)}),   greenW:.13, w:4},
+  {items:()=>({iron_ingot:1}),                             greenW:.07, w:1},
+  {items:()=>({relic:1}),                                  greenW:.05, w:1},
+];
+function rollFishingLoot(){
+  let total=0;for(const l of FISHING_LOOT)total+=l.w;
+  let r=Math.random()*total;
+  for(const l of FISHING_LOOT){r-=l.w;if(r<=0)return l;}
+  return FISHING_LOOT[0];
+}
+function startFishing(f){
+  if(!W._fishing)W._fishing={state:'idle'};
+  if(W._fishing.state!=='idle')return;
+  W._fishing={state:'waiting',waitTimer:3+Math.random()*5,soundTimer:0,faceX:f.x,faceY:f.y};
+  toast('🎣 拋竿！靜待魚上鉤…');sfx('splash');
+}
+function attemptCatch(){
+  const fm=W._fishing;if(!fm||fm.state!=='biting')return;
+  const inZone=fm.cursorPos>=fm.greenStart&&fm.cursorPos<=fm.greenStart+fm.greenW;
+  if(inZone){
+    for(const[k,n]of Object.entries(fm.loot))gain(k,n,{x:fm.faceX,y:fm.faceY});
+    wearEquip('hand');sfx('fish_ok');
+    const names=Object.keys(fm.loot).map(k=>RESOURCES[k]?(RESOURCES[k].ico+RESOURCES[k].name):k);
+    toast('🎣 釣到了！'+names.join('、'));
+  }else{
+    toast('🐟 脫鉤了…再試一次！');sfx('no');
+  }
+  W._fishing={state:'idle'};
+}
 function nearWell(x,y){for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){const nx=x+dx,ny=y+dy;if(nx<0||ny<0||nx>=SIZE||ny>=SIZE)continue;if(W.obj[ny*SIZE+nx]===O.WELL)return true;}return false;}
 
 function contextAction(){
   // 站著的格子：墓碑
   const ci=W.py*SIZE+W.px;
   if(W.obj[ci]===O.GRAVE&&W.deathItems)return{label:'撿起遺落的物品',run(){collectDeathItems();},stam:0};
-  // 敵人優先
-  const enemy=nearestEnemy();
-  if(enemy)return enemyAction(enemy);
-  // 動物
-  const animal=nearestAnimal();
-  if(animal)return animalAction(animal);
+  // 釣魚小遊戲狀態攔截（轉身也能按 F）
+  if(W._fishing&&W._fishing.state==='biting')
+    return{label:'拉起魚竿！',run(){attemptCatch();},stam:0};
+  if(W._fishing&&W._fishing.state==='waiting')
+    return{label:'等待魚上鉤中…',run(){toast('耐心等候，有動靜了再拉！');},stam:0,soft:1};
+  // 站著的格子：腳下成熟作物（允許踩入農田後直接收割）
+  if(W.obj[ci]===O.CROP&&cropStage(ci)>=2)
+    return{label:'收割腳下作物',run(){gain('food',3,{x:W.px,y:W.py});if(Math.random()<.8)gain('seed',1);W.obj[ci]=O.NONE;W.stats.cropsHarvested++;sfx('pick');},stam:3};
   const f=faceTile();if(!f)return null;
   const o=W.obj[f.i],t=W.ter[f.i];
   // 地城專屬
@@ -1287,8 +1487,15 @@ function contextAction(){
   if(t===T.WATER||t===T.DEEP){
     const tool=equippedHand();
     if(tool==='fishing_rod')
-      return{label:'釣魚',run(){gain('raw_fish',1+Math.floor(Math.random()*2),f);wearEquip('hand');sfx('pick');},stam:5};
+      return{label:'釣魚',run(){startFishing(f);},stam:3};
     return{label:'水面波光粼粼',run(){toast('可以蓋木橋,或持釣竿互動釣魚');},stam:0,soft:1};
+  }
+  // 野生動物（馴化），物件互動無結果時才觸發
+  for(const a of W.animals){
+    if(a.state!=='tamed'&&Math.abs(a.x-f.x)<1.5&&Math.abs(a.y-f.y)<1.5)return animalAction(a);
+  }
+  for(const a of W.animals){
+    if(a.state!=='tamed'&&Math.abs(a.x-W.px)<1.5&&Math.abs(a.y-W.py)<1.5)return animalAction(a);
   }
   return null;
 }
@@ -1302,12 +1509,36 @@ function gain(k,n,f){
   renderInv();
 }
 
+function executeAction(a){
+  if(!a)return false;
+  const stamCost=a.stam>0&&W.equipped.hands==='gloves'?Math.round(a.stam*0.6):a.stam;
+  if(stamCost>0&&W.stam<stamCost){toast('太累了……吃點東西或到火邊休息');sfx('no');return false;}
+  W.stam-=stamCost;a.run();mmDirty=true;renderInv();checkQuest();return true;
+}
+
 function doInteract(){
   const a=contextAction();
   if(!a){toast('這裡沒什麼能做的');return;}
-  const stamCost=a.stam>0&&W.equipped.hands==='gloves'?Math.round(a.stam*0.6):a.stam;
-  if(stamCost>0&&W.stam<stamCost){toast('太累了……吃點東西或到火邊休息');sfx('no');return;}
-  W.stam-=stamCost;a.run();mmDirty=true;renderInv();checkQuest();
+  executeAction(a);
+}
+
+function combatAction(){
+  const enemy=nearestEnemy();
+  if(enemy)return enemyAction(enemy);
+  const f=faceTile();
+  for(const a of W.animals){
+    if(a.state==='tamed'&&f&&Math.abs(a.x-f.x)<1.0&&Math.abs(a.y-f.y)<1.0)return animalAction(a);
+  }
+  for(const a of W.animals){
+    if(a.state==='tamed'&&Math.abs(a.x-W.px)<1.5&&Math.abs(a.y-W.py)<1.5)return animalAction(a);
+  }
+  return null;
+}
+
+function doCombat(){
+  const ca=combatAction();
+  if(!ca){toast('附近沒有敵人或夥伴');sfx('no');return;}
+  executeAction(ca);
 }
 
 function eatFood(){
@@ -1381,6 +1612,7 @@ window.addEventListener('keydown',e=>{
   }
   keys[k]=true;
   if(k==='f'||k===' ')doInteract();
+  if(k==='g')doCombat();
   if(k==='t')togglePanel('buildPanel');
   if(k==='r')togglePanel('craftPanel');
   if(k==='e')togglePanel('bagPanel');
@@ -1401,6 +1633,7 @@ document.querySelectorAll('.dbtn').forEach(b=>{
   b.addEventListener('pointercancel',off);b.addEventListener('pointerleave',off);
 });
 document.getElementById('btnAct').onclick=()=>{if(running)doInteract();};
+document.getElementById('btnFight').onclick=()=>{if(running)doCombat();};
 document.getElementById('btnBuild').onclick=()=>togglePanel('buildPanel');
 document.getElementById('btnCraft').onclick=()=>togglePanel('craftPanel');
 document.getElementById('btnBag').onclick=()=>togglePanel('bagPanel');
@@ -1439,7 +1672,8 @@ function tryMove(d){
   if(nx<0||ny<0||nx>=SIZE||ny>=SIZE)return;
   const i=ny*SIZE+nx,t=W.ter[i],o=W.obj[i];
   if(t===T.DEEP||t===T.WATER||t===T.MTN)return;
-  if([O.TREE,O.ROCK,O.RUIN,O.FIRE,O.HUT,O.WELL,O.MONU,O.SAPLING,O.CROP,O.WORKBENCH,O.LOOM,O.FORGE,O.CHEST,O.STORAGE].includes(o))return;
+  if([O.TREE,O.ROCK,O.RUIN,O.FIRE,O.HUT,O.WELL,O.MONU,O.SAPLING,O.WORKBENCH,O.LOOM,O.FORGE,O.CHEST,O.STORAGE].includes(o))return;
+  if(W._fishing&&W._fishing.state!=='idle')W._fishing={state:'idle'};
   W.px=nx;W.py=ny;
   const speedMul=W.equipped.feet==='boots'?0.65:1;
   moveCd=((t===T.PATH||t===T.BRIDGE)?0.16:0.25)*speedMul;
@@ -1448,6 +1682,7 @@ function tryMove(d){
   const ni=W.py*SIZE+W.px;
   if(W.obj[ni]===O.STAIRS_DOWN)goDownstairs();
   else if(W.obj[ni]===O.STAIRS_UP)goUpstairs();
+  else if(W.obj[ni]===O.PORTAL)exitDungeon();
 }
 
 /* ══════════ 漂浮字 ══════════ */
@@ -1593,6 +1828,24 @@ function drawObj(x,y,sx,sy){
     ctx.strokeStyle='#7a6a58';ctx.lineWidth=1.5;
     ctx.beginPath();ctx.moveTo(cx-8,sy+TS-10);ctx.lineTo(cx+8,sy+TS-10);ctx.stroke();
     ctx.fillStyle='rgba(200,80,80,.7)';ctx.font='700 8px sans-serif';ctx.textAlign='center';ctx.fillText('†',cx,sy+TS-6);
+  }else if(o===O.PORTAL){
+    const pulse=0.6+0.3*Math.abs(Math.sin((W.timeAcc||0)*4));
+    ctx.save();
+    // 外光環
+    const grad=ctx.createRadialGradient(cx,sy+TS/2,2,cx,sy+TS/2,14);
+    grad.addColorStop(0,`rgba(180,100,255,${pulse})`);
+    grad.addColorStop(1,'rgba(80,0,180,0)');
+    ctx.fillStyle=grad;ctx.beginPath();ctx.arc(cx,sy+TS/2,14,0,Math.PI*2);ctx.fill();
+    // 渦旋環
+    ctx.strokeStyle=`rgba(220,160,255,${pulse})`;ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(cx,sy+TS/2,8,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle=`rgba(255,220,255,${pulse*.7})`;ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(cx,sy+TS/2,5,0,Math.PI*2);ctx.stroke();
+    // 中心
+    ctx.fillStyle=`rgba(240,200,255,${pulse})`;ctx.beginPath();ctx.arc(cx,sy+TS/2,3,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+    ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';ctx.textAlign='center';
+    ctx.fillText('出口',cx,sy+TS-4);
   }else if(o===O.STORAGE){
     // 木箱本體
     ctx.fillStyle='#7a4a20';ctx.fillRect(cx-11,sy+TS-22,22,18);
@@ -1674,6 +1927,29 @@ function render(){
     ctx.globalAlpha=1;return fl.t<1.1;
   });
   drawNight(ambientDark());
+  // ── 釣魚小遊戲 Bar（畫在夜間遮罩之上）──
+  if(W._fishing&&W._fishing.state==='biting'){
+    const fm=W._fishing;
+    const bw=92,bh=13;
+    const bx=Math.round(W.px*TS+TS/2-camX-bw/2);
+    const by=Math.round(W.py*TS-camY-52);
+    // 背景
+    ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(bx-3,by-18,bw+6,bh+22);
+    ctx.fillStyle='#fff';ctx.font='700 9px sans-serif';ctx.textAlign='center';
+    ctx.fillText('🎣 F 釣起',bx+bw/2,by-6);
+    // 紅色底
+    ctx.fillStyle='#7a2020';ctx.fillRect(bx,by,bw,bh);
+    // 綠色區（脈動：偶粗偶細）
+    const pulse=.78+.28*Math.abs(Math.sin((W.timeAcc||0)*2.8));
+    const gw=Math.max(4,Math.round(fm.greenW*pulse*bw));
+    const gs=Math.round(fm.greenStart*bw);
+    ctx.fillStyle='#44c432';ctx.fillRect(bx+gs,by,gw,bh);
+    // 白色游標
+    const cx=Math.round(fm.cursorPos*bw);
+    ctx.fillStyle='#fff';ctx.fillRect(bx+cx-2,by-2,4,bh+4);
+    // 倒計時黃條
+    ctx.fillStyle='#e8d030';ctx.fillRect(bx,by+bh-2,Math.max(0,Math.round((fm.biteTimer/5)*bw)),2);
+  }
 }
 
 let walkPhase=0;
@@ -1748,9 +2024,12 @@ function updateHUD(){
   depthEl.style.display=W.inDungeon?'':'none';
   if(W.inDungeon)depthEl.textContent='🪨 B'+W.dungeonFloor;
   document.getElementById('mmLabel').textContent=W.inDungeon?('B'+W.dungeonFloor+' 地城'):'島嶼全圖';
-  const a=contextAction();
-  if(a&&!a.soft){hintEl.textContent='⭐ '+a.label;hintEl.classList.add('show');}
-  else if(a){hintEl.textContent=a.label;hintEl.classList.add('show');}
+  const a=contextAction(),ca=combatAction();
+  let hint='';
+  if(a&&!a.soft)hint='⭐ F：'+a.label;
+  else if(a)hint='F：'+a.label;
+  if(ca){const cl=ca.label.length>14?ca.label.slice(0,14)+'…':ca.label;hint+=(hint?'  ':'')+'⚔ G：'+cl;}
+  if(hint){hintEl.textContent=hint;hintEl.classList.add('show');}
   else hintEl.classList.remove('show');
 }
 
@@ -1787,7 +2066,9 @@ function save(){
       inv:W.inv,equipped:W.equipped,equipDur:W.equipDur,animals:W.animals,
       stats:W.stats,questIdx:W.questIdx,freePlay:W.freePlay,ruinFound:W.ruinFound,
       hp:W.hp,maxHp:W.maxHp,deathPos:W.deathPos,deathItems:W.deathItems,
-      dungeonCache,storages:W.storages||{}};
+      dungeonCache,storages:W.storages||{},invDur:W.invDur||{},
+      inDungeon:W.inDungeon||false,dungeonIdx:W.dungeonIdx||-1,dungeonFloor:W.dungeonFloor||0,
+      dungeonPx:inD?W.px:undefined,dungeonPy:inD?W.py:undefined};
     localStorage.setItem(SAVE_KEY,JSON.stringify(d));
   }catch(e){}
 }
@@ -1809,6 +2090,21 @@ function load(){
           enemies:ds.enemies||[],spawnX:ds.spawnX||fresh.spawnX,spawnY:ds.spawnY||fresh.spawnY};
       }catch(e2){}
     }
+    // 將舊 invDur 格式（{id:number}）遷移至新陣列格式（{id:number[]}）
+    const rawInvDur=d.invDur||{};
+    const migratedInvDur={};
+    for(const [k,v] of Object.entries(rawInvDur)){
+      migratedInvDur[k]=Array.isArray(v)?[...v]:(v!=null?[v]:[]);
+    }
+    // 為舊存檔中未追蹤的裝備補全耐久陣列
+    for(const [id,def] of Object.entries(EQUIP_DEF)){
+      if(def.durability==null)continue;
+      const cnt=(d.inv&&d.inv[id])||0;if(!cnt)continue;
+      const arr=migratedInvDur[id]||[];
+      while(arr.length<cnt)arr.push(def.durability);
+      if(arr.length>cnt)arr.length=cnt;
+      migratedInvDur[id]=arr;
+    }
     Object.assign(w,{px:d.px,py:d.py,face:d.face,stam:d.stam,day:d.day,tod:d.tod,
       timeAcc:d.timeAcc||0,
       equipped:Object.assign({head:null,body:null,hand:null,hands:null,feet:null,weapon:null},d.equipped||{}),
@@ -1819,8 +2115,25 @@ function load(){
       enemies:[],inDungeon:false,dungeonIdx:-1,dungeonFloor:0,
       dungeons,_surface:null,
       deathPos:d.deathPos||null,deathItems:d.deathItems||null,
-      storages:d.storages||{}});
+      storages:d.storages||{},invDur:migratedInvDur,_fishing:null});
     w.stats=Object.assign({gWood:0,gStone:0,fires:0,huts:0,farmsSown:0,cropsHarvested:0,bridges:0,ruinsFound:0,monu:0,builds:0,workbenches:0,tamed:0},w.stats);
+    // 若上次存檔時在地城中，還原地城狀態
+    if(d.inDungeon&&d.dungeonIdx>=0&&d.dungeonPx!=null){
+      w._surface={ter:w.ter,obj:w.obj,aux:w.aux,disc:w.disc,
+        px:d.px,py:d.py,enemies:[]};
+      w.inDungeon=true;w.dungeonIdx=d.dungeonIdx;w.dungeonFloor=d.dungeonFloor||0;
+      w.px=d.dungeonPx;w.py=d.dungeonPy;
+      const dkey=d.dungeonIdx+'_'+(d.dungeonFloor||0);
+      const dg=w.dungeons[dkey];
+      if(dg&&dg.ter){
+        w.ter=dg.ter;w.obj=dg.obj;w.aux=dg.aux||new Float32Array(SIZE*SIZE);
+        w.disc=dg.disc;w.enemies=(dg.enemies||[]).map(e=>({...e}));
+      }else{
+        const fresh2=genDungeon(d.seedStr,d.dungeonIdx,d.dungeonFloor||0);
+        w.ter=fresh2.ter;w.obj=fresh2.obj;w.aux=fresh2.aux;
+        w.disc=fresh2.disc;w.enemies=(fresh2.enemies||[]).map(e=>({...e}));
+      }
+    }
     return w;
   }catch(e){return null;}
 }
@@ -1863,9 +2176,33 @@ function loop(ts){
     }
     updateAnimals(dt);
     updateEnemies(dt);
+    // 釣魚狀態更新
+    if(W._fishing){
+      const fm=W._fishing;
+      if(fm.state==='waiting'){
+        fm.waitTimer-=dt;fm.soundTimer=(fm.soundTimer||0)+dt;
+        if(fm.soundTimer>1.4+Math.random()){fm.soundTimer=0;sfx('splash');}
+        if(fm.waitTimer<=0){
+          const roll=rollFishingLoot();
+          W._fishing={state:'biting',loot:roll.items(),greenW:roll.greenW,
+            greenStart:Math.random()*(1-roll.greenW),
+            cursorPos:Math.random(),cursorSpeed:.45+Math.random()*.55,
+            cursorDir:Math.random()<.5?1:-1,biteTimer:5,
+            faceX:fm.faceX,faceY:fm.faceY};
+          sfx('splash');toast('🎣 魚上鉤了！快按 F 釣起！');
+        }
+      }else if(fm.state==='biting'){
+        fm.cursorPos+=fm.cursorSpeed*fm.cursorDir*dt;
+        if(fm.cursorPos>=1){fm.cursorPos=1;fm.cursorDir=-1;}
+        if(fm.cursorPos<=0){fm.cursorPos=0;fm.cursorDir=1;}
+        fm.biteTimer-=dt;
+        if(fm.biteTimer<=0){toast('🐟 魚跑掉了…');sfx('no');W._fishing={state:'idle'};}
+      }
+    }
     if(!W.inDungeon){growAcc+=dt;if(growAcc>=1){growWorld(growAcc);growAcc=0;}}
   }
   render();mmPlayer();updateHUD();
+  if(paused&&document.getElementById('bagPanel').classList.contains('open'))drawDoll();
 }
 requestAnimationFrame(loop);
 
