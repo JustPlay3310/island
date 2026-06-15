@@ -215,6 +215,17 @@ canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;touch-ac
   <div id="endStats"></div>
   <button class="tbtn" id="btnFree">繼續自由建設</button>
 </div></div>
+<div id="monuPanel" style="display:none;position:fixed;inset:0;z-index:22;background:rgba(16,31,25,.82);align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--paper);border:3px solid var(--ink);border-radius:14px;box-shadow:6px 6px 0 rgba(0,0,0,.4);padding:22px;width:min(380px,90vw);text-align:center;">
+    <h2 style="margin:0 0 8px">🏛️ 紀念碑</h2>
+    <div style="font-size:13px;opacity:.8;margin-bottom:16px">先民的高塔孕藏古老力量。</div>
+    <button class="tbtn" id="btnMonuRaid">⚔️ 開啟隨機地城傳送門</button>
+    <div style="font-size:11px;margin:5px 0 14px;opacity:.65">隨機生成 3~7 層地城・BOSS 在最深層・可隨時刷新</div>
+    <button class="tbtn" id="btnMonuNewIsland">🌏 前往新島嶼</button>
+    <div style="font-size:11px;margin:5px 0 14px;opacity:.65">攜帶身上物品前往全新島嶼（無法返回）</div>
+    <button class="tbtn alt" id="btnMonuClose">✕ 離開</button>
+  </div>
+</div>
 <div id="fade"></div>
 
 <script src="lib/data.js"></script>
@@ -455,7 +466,6 @@ function renderBuild(){
   }
 }
 function tryBuild(b){
-  if(W.inDungeon&&!['fire','workbench','storage'].includes(b.id)){toast('在地城中只能建造營火、工作臺和儲存箱');sfx('no');return;}
   if(b.need&&!b.need()){toast(b.needMsg||'條件未達成');sfx('no');return;}
   if(!canAfford(b.cost)){toast('材料不夠:'+costStr(b.cost));sfx('no');return;}
   const sc=b.stamCost||4;if(W.stam<sc){toast('太累了');sfx('no');return;}
@@ -1277,23 +1287,35 @@ function playerDeath(){
 function genChestLoot(floor){
   const loot=[];
   const roll=(k,n,p)=>{if(Math.random()<p)loot.push({k,n});};
-  roll('food',   2+Math.floor(Math.random()*3), 0.9);
-  roll('stone',  3+Math.floor(Math.random()*4), 0.7);
-  roll('coal',   1+Math.floor(Math.random()*2), floor>=2?0.6:0.2);
-  roll('iron_ore',1+Math.floor(Math.random()*3),floor>=2?0.5:0.1);
-  roll('iron_ingot',1+Math.floor(Math.random()*2),floor>=3?0.4:0);
-  roll('relic',  1, floor>=4?0.4:0);
+  roll('food',      2+Math.floor(Math.random()*3), 0.9);
+  roll('stone',     3+Math.floor(Math.random()*4), 0.7);
+  roll('coal',      1+Math.floor(Math.random()*2), floor>=2?0.6:0.2);
+  roll('iron_ore',  1+Math.floor(Math.random()*3), floor>=2?0.5:0.1);
+  roll('iron_ingot',1+Math.floor(Math.random()*2), floor>=3?0.4:0);
+  roll('relic',     1, floor>=4?0.4:0);
+  // Equipment drops (deeper floors = better gear)
+  roll('stone_sword',1, floor>=2?0.12:0.05);
+  roll('stone_axe',  1, floor>=2?0.08:0.03);
+  roll('hat',        1, floor>=2?0.08:0.03);
+  roll('boots',      1, floor>=3?0.12:0.04);
+  roll('iron_sword', 1, floor>=3?0.15:0);
+  roll('iron_axe',   1, floor>=3?0.10:0);
+  roll('iron_pick',  1, floor>=4?0.15:0);
+  roll('coat',       1, floor>=4?0.10:0);
+  roll('gloves',     1, floor>=3?0.10:0.04);
   if(!loot.length)loot.push({k:'food',n:2});
   return loot;
 }
 
+function dungeonSeed(){return W.dungeonIdx===100?(W.raidSeedStr||W.seedStr):W.seedStr;}
 function enterDungeon(ruinIdx){
   if(W.inDungeon||_transitioning)return;_transitioning=true;
   const fade=document.getElementById('fade');fade.style.opacity=1;
   setTimeout(()=>{
     W._surface={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,px:W.px,py:W.py,enemies:W.enemies||[]};
+    W.dungeonMaxFloor=5;W.raidSeedStr='';
     const key=ruinIdx+'_1';
-    if(!W.dungeons[key])W.dungeons[key]=genDungeon(W.seedStr,ruinIdx,1);
+    if(!W.dungeons[key])W.dungeons[key]=genDungeon(W.seedStr,ruinIdx,1,5);
     const d=W.dungeons[key];
     W.ter=d.ter;W.obj=d.obj;W.aux=d.aux;W.disc=d.disc;
     W.enemies=d.enemies.map(e=>({...e}));
@@ -1320,24 +1342,24 @@ function exitDungeon(){
   },650);
 }
 function goDownstairs(){
-  if(!W.inDungeon||W.dungeonFloor>=4){toast('這已經是最深層了');return;}
+  const mf=W.dungeonMaxFloor||5;
+  if(!W.inDungeon||W.dungeonFloor>=mf){toast('這已經是最深層了');return;}
   if(_transitioning)return;_transitioning=true;
   const nextFloor=W.dungeonFloor+1;
   const fade=document.getElementById('fade');fade.style.opacity=1;
   setTimeout(()=>{
     W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
     const key=W.dungeonIdx+'_'+nextFloor;
-    if(!W.dungeons[key])W.dungeons[key]=genDungeon(W.seedStr,W.dungeonIdx,nextFloor);
+    if(!W.dungeons[key])W.dungeons[key]=genDungeon(dungeonSeed(),W.dungeonIdx,nextFloor,mf);
     const d=W.dungeons[key];
     W.ter=d.ter;W.obj=d.obj;W.aux=d.aux;W.disc=d.disc;
     W.enemies=d.enemies.map(e=>({...e}));
-    // 落點：新樓層 STAIRS_UP 下方（spawn 已設在 cy+1，但若恰好在 STAIRS_UP 上則再往南 1 格）
     W.px=d.spawnX;W.py=d.spawnY;
     const ni1=W.py*SIZE+W.px;
     if(W.obj[ni1]===O.STAIRS_UP&&W.py<SIZE-1&&W.ter[(W.py+1)*SIZE+W.px]===T.ROCKY){W.py+=1;}
     W.dungeonFloor=nextFloor;W.face=1;
     camInit=false;mmDirty=true;discover();updateHUD();
-    toast('🪨 B'+W.dungeonFloor+(nextFloor===4?' — 最深層!':' — 往更深處…'));
+    toast('🪨 B'+W.dungeonFloor+(nextFloor===mf?' — 最深層!':' — 往更深處…'));
     fade.style.opacity=0;_transitioning=false;
   },650);
 }
@@ -1350,7 +1372,7 @@ function goUpstairs(){
   setTimeout(()=>{
     W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
     const key=W.dungeonIdx+'_'+prevFloor;
-    if(!W.dungeons[key])W.dungeons[key]=genDungeon(W.seedStr,W.dungeonIdx,prevFloor);
+    if(!W.dungeons[key])W.dungeons[key]=genDungeon(dungeonSeed(),W.dungeonIdx,prevFloor,W.dungeonMaxFloor||5);
     const d=W.dungeons[key];
     W.ter=d.ter;W.obj=d.obj;W.aux=d.aux;W.disc=d.disc;
     W.enemies=d.enemies.map(e=>({...e}));
@@ -1464,7 +1486,7 @@ function contextAction(){
   }
   if(o===O.FIRE||o===O.HUT)return{label:'休息到清晨',run(){restTillMorning();},stam:0};
   if(o===O.WELL)return{label:'喝口井水',run(){W.stam=Math.min(100,W.stam+8);W.hp=Math.min(W.maxHp,W.hp+5);toast('清涼！體力+8 HP+5');sfx('eat');updateHUD();},stam:0};
-  if(o===O.MONU)return{label:'仰望紀念碑',run(){toast('霧已經散了。這是你的島。');},stam:0,soft:1};
+  if(o===O.MONU)return{label:'紀念碑選項',run(){openMonumentPanel();},stam:0};
   for(const [stId,station] of Object.entries(STATIONS)){
     if(station.objType&&o===station.objType)
       return{label:'使用'+station.name,run(){craftTab=stId;togglePanel('craftPanel');},stam:0};
@@ -1505,7 +1527,13 @@ function gain(k,n,f){
   if(k==='wood')W.stats.gWood+=n;
   if(k==='stone')W.stats.gStone+=n;
   const r=RESOURCES[k];
-  if(f&&r)spawnFloat(f.x,f.y,r.ico+'+'+n);
+  const _eDef=EQUIP_DEF[k];
+  if(_eDef&&_eDef.durability!=null&&n>0){
+    if(!W.invDur)W.invDur={};
+    if(!W.invDur[k])W.invDur[k]=[];
+    for(let _i=0;_i<n;_i++)W.invDur[k].push(Math.round(_eDef.durability*(0.3+Math.random()*0.5)));
+  }
+  if(f)spawnFloat(f.x,f.y,(r?.ico||_eDef?.ico||'?')+'+'+n);
   renderInv();
 }
 
@@ -1567,6 +1595,57 @@ function onMonument(){
   },500);
 }
 document.getElementById('btnFree').onclick=()=>document.getElementById('ending').classList.remove('open');
+
+function openMonumentPanel(){document.getElementById('monuPanel').style.display='flex';}
+document.getElementById('btnMonuClose').onclick=()=>document.getElementById('monuPanel').style.display='none';
+document.getElementById('btnMonuRaid').onclick=()=>{document.getElementById('monuPanel').style.display='none';enterRaidDungeon();};
+document.getElementById('btnMonuNewIsland').onclick=()=>{document.getElementById('monuPanel').style.display='none';confirmNewIsland();};
+
+function enterRaidDungeon(){
+  if(W.inDungeon){toast('已在地城中，請先離開');return;}
+  if(_transitioning)return;
+  const mf=3+Math.floor(Math.random()*5);
+  W.raidCounter=(W.raidCounter||0)+1;
+  const rs=W.seedStr+'_raid_'+W.raidCounter;
+  for(const k of Object.keys(W.dungeons)){if(k.startsWith('100_'))delete W.dungeons[k];}
+  if(W.deathPos&&W.deathPos.dungeonIdx===100){W.deathItems=null;W.deathPos=null;}
+  W.dungeonMaxFloor=mf;W.raidSeedStr=rs;
+  _transitioning=true;
+  const fade=document.getElementById('fade');fade.style.opacity=1;
+  setTimeout(()=>{
+    W._surface={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,px:W.px,py:W.py,enemies:W.enemies||[]};
+    const key='100_1';
+    W.dungeons[key]=genDungeon(rs,100,1,mf);
+    const d=W.dungeons[key];
+    W.ter=d.ter;W.obj=d.obj;W.aux=d.aux;W.disc=d.disc;
+    W.enemies=d.enemies.map(e=>({...e}));
+    W.px=d.spawnX;W.py=d.spawnY;
+    W.inDungeon=true;W.dungeonIdx=100;W.dungeonFloor=1;W.face=0;
+    camInit=false;mmDirty=true;discover();updateHUD();
+    toast('🌀 隨機地城 B1/'+mf+'F — 深入探索！');
+    fade.style.opacity=0;_transitioning=false;
+  },650);
+}
+
+function confirmNewIsland(){
+  if(!confirm('確定前往新島嶼？\n身上的物品和裝備會隨行，但無法返回此島嶼。'))return;
+  const ci={...W.inv},ce={...W.equipped},cd={...W.equipDur},cid={};
+  for(const [k,v] of Object.entries(W.invDur||{}))cid[k]=[...v];
+  const ns='isle-'+Math.floor(Math.random()*1e9);
+  const nw=genWorld(ns);
+  nw.inv=ci;nw.equipped=ce;nw.equipDur=cd;nw.invDur=cid;
+  nw.questIdx=0;nw.freePlay=false;
+  W=nw;
+  const fade=document.getElementById('fade');fade.style.opacity=1;
+  setTimeout(()=>{
+    camInit=false;mmDirty=true;floats=[];
+    discover();renderInv();renderBagPanel();renderQuests();checkQuest();
+    updateHUD();save();
+    document.getElementById('depthCard').style.display='none';
+    toast('🌊 新的島嶼！新的旅程！');
+    fade.style.opacity=0;
+  },800);
+}
 
 /* ══════════ 世界生長 ══════════ */
 function growWorld(dt){
@@ -2068,6 +2147,7 @@ function save(){
       hp:W.hp,maxHp:W.maxHp,deathPos:W.deathPos,deathItems:W.deathItems,
       dungeonCache,storages:W.storages||{},invDur:W.invDur||{},
       inDungeon:W.inDungeon||false,dungeonIdx:W.dungeonIdx||-1,dungeonFloor:W.dungeonFloor||0,
+      dungeonMaxFloor:W.dungeonMaxFloor||5,raidSeedStr:W.raidSeedStr||'',raidCounter:W.raidCounter||0,
       dungeonPx:inD?W.px:undefined,dungeonPy:inD?W.py:undefined};
     localStorage.setItem(SAVE_KEY,JSON.stringify(d));
   }catch(e){}
@@ -2085,7 +2165,8 @@ function load(){
     for(const [k,ds] of Object.entries(d.dungeonCache||{})){
       try{
         const parts=k.split('_');const ri=+parts[0],fl=+parts[1];
-        const fresh=genDungeon(d.seedStr,ri,fl);
+        const dseed=ri===100?(d.raidSeedStr||d.seedStr):d.seedStr;
+        const fresh=genDungeon(dseed,ri,fl,d.dungeonMaxFloor||5);
         dungeons[k]={...fresh,obj:Uint8Array.from(ds.obj),disc:Uint8Array.from(ds.disc),
           enemies:ds.enemies||[],spawnX:ds.spawnX||fresh.spawnX,spawnY:ds.spawnY||fresh.spawnY};
       }catch(e2){}
@@ -2113,6 +2194,7 @@ function load(){
       freePlay:d.freePlay,ruinFound:d.ruinFound,
       hp:d.hp||100,maxHp:d.maxHp||100,
       enemies:[],inDungeon:false,dungeonIdx:-1,dungeonFloor:0,
+      dungeonMaxFloor:d.dungeonMaxFloor||5,raidSeedStr:d.raidSeedStr||'',raidCounter:d.raidCounter||0,
       dungeons,_surface:null,
       deathPos:d.deathPos||null,deathItems:d.deathItems||null,
       storages:d.storages||{},invDur:migratedInvDur,_fishing:null});
@@ -2129,7 +2211,8 @@ function load(){
         w.ter=dg.ter;w.obj=dg.obj;w.aux=dg.aux||new Float32Array(SIZE*SIZE);
         w.disc=dg.disc;w.enemies=(dg.enemies||[]).map(e=>({...e}));
       }else{
-        const fresh2=genDungeon(d.seedStr,d.dungeonIdx,d.dungeonFloor||0);
+        const dseed2=d.dungeonIdx===100?(d.raidSeedStr||d.seedStr):d.seedStr;
+        const fresh2=genDungeon(dseed2,d.dungeonIdx,d.dungeonFloor||0,d.dungeonMaxFloor||5);
         w.ter=fresh2.ter;w.obj=fresh2.obj;w.aux=fresh2.aux;
         w.disc=fresh2.disc;w.enemies=(fresh2.enemies||[]).map(e=>({...e}));
       }
