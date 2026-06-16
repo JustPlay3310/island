@@ -219,8 +219,8 @@ canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block;touch-ac
   <div style="background:var(--paper);border:3px solid var(--ink);border-radius:14px;box-shadow:6px 6px 0 rgba(0,0,0,.4);padding:22px;width:min(380px,90vw);text-align:center;">
     <h2 style="margin:0 0 8px">🏛️ 紀念碑</h2>
     <div style="font-size:13px;opacity:.8;margin-bottom:16px">先民的高塔孕藏古老力量。</div>
-    <button class="tbtn" id="btnMonuRaid">⚔️ 開啟隨機地城傳送門</button>
-    <div style="font-size:11px;margin:5px 0 14px;opacity:.65">隨機生成 3~7 層地城・BOSS 在最深層・可隨時刷新</div>
+    <button class="tbtn" id="btnMonuRaid">⚔️ 開啟/重置隨機地城傳送門</button>
+    <div style="font-size:11px;margin:5px 0 14px;opacity:.65">在紀念碑旁建立一座固定的傳送門（同時只能存在一座）・隨機 3~7 層地城・BOSS 在最深層・重新開啟會放棄目前的地城進度</div>
     <button class="tbtn" id="btnMonuNewIsland">🌏 前往新島嶼</button>
     <div style="font-size:11px;margin:5px 0 14px;opacity:.65">攜帶身上物品前往全新島嶼（無法返回）</div>
     <button class="tbtn alt" id="btnMonuClose">✕ 離開</button>
@@ -1271,7 +1271,7 @@ function playerDeath(){
     if(W.inDungeon&&W._surface){
       const s=W._surface;
       W.ter=s.ter;W.obj=s.obj;W.aux=s.aux;W.disc=s.disc;
-      W.px=s.px;W.py=s.py;W.enemies=s.enemies||[];
+      W.px=s.px;W.py=s.py;W.enemies=s.enemies||[];W.animals=s.animals||[];
       W._surface=null;W.inDungeon=false;W.dungeonIdx=-1;W.dungeonFloor=0;
       document.getElementById('depthCard').style.display='none';
     }
@@ -1312,8 +1312,9 @@ function enterDungeon(ruinIdx){
   if(W.inDungeon||_transitioning)return;_transitioning=true;
   const fade=document.getElementById('fade');fade.style.opacity=1;
   setTimeout(()=>{
-    W._surface={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,px:W.px,py:W.py,enemies:W.enemies||[]};
-    W.dungeonMaxFloor=5;W.raidSeedStr='';
+    W._surface={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,px:W.px,py:W.py,enemies:W.enemies||[],animals:W.animals||[]};
+    W.animals=[];
+    W.dungeonMaxFloor=5;
     const key=ruinIdx+'_1';
     if(!W.dungeons[key])W.dungeons[key]=genDungeon(W.seedStr,ruinIdx,1,5);
     const d=W.dungeons[key];
@@ -1333,7 +1334,7 @@ function exitDungeon(){
     W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
     const s=W._surface;
     W.ter=s.ter;W.obj=s.obj;W.aux=s.aux;W.disc=s.disc;
-    W.px=s.px;W.py=s.py;W.enemies=s.enemies||[];
+    W.px=s.px;W.py=s.py;W.enemies=s.enemies||[];W.animals=s.animals||[];
     W._surface=null;W.inDungeon=false;W.dungeonIdx=-1;W.dungeonFloor=0;W.face=1;
     camInit=false;mmDirty=true;discover();updateHUD();
     toast('☀️ 回到地面了');
@@ -1486,7 +1487,7 @@ function contextAction(){
   }
   if(o===O.FIRE||o===O.HUT)return{label:'休息到清晨',run(){restTillMorning();},stam:0};
   if(o===O.WELL)return{label:'喝口井水',run(){W.stam=Math.min(100,W.stam+8);W.hp=Math.min(W.maxHp,W.hp+5);toast('清涼！體力+8 HP+5');sfx('eat');updateHUD();},stam:0};
-  if(o===O.MONU)return{label:'紀念碑選項',run(){openMonumentPanel();},stam:0};
+  if(o===O.MONU)return{label:'紀念碑選項',run(){openMonumentPanel(f.x,f.y);},stam:0};
   for(const [stId,station] of Object.entries(STATIONS)){
     if(station.objType&&o===station.objType)
       return{label:'使用'+station.name,run(){craftTab=stId;togglePanel('craftPanel');},stam:0};
@@ -1596,33 +1597,59 @@ function onMonument(){
 }
 document.getElementById('btnFree').onclick=()=>document.getElementById('ending').classList.remove('open');
 
-function openMonumentPanel(){document.getElementById('monuPanel').style.display='flex';}
+let _monuFaceX=0,_monuFaceY=0;
+function openMonumentPanel(mx,my){_monuFaceX=mx;_monuFaceY=my;document.getElementById('monuPanel').style.display='flex';}
 document.getElementById('btnMonuClose').onclick=()=>document.getElementById('monuPanel').style.display='none';
-document.getElementById('btnMonuRaid').onclick=()=>{document.getElementById('monuPanel').style.display='none';enterRaidDungeon();};
+document.getElementById('btnMonuRaid').onclick=()=>{document.getElementById('monuPanel').style.display='none';createOrRefreshRaidGate();};
 document.getElementById('btnMonuNewIsland').onclick=()=>{document.getElementById('monuPanel').style.display='none';confirmNewIsland();};
 
-function enterRaidDungeon(){
+function createOrRefreshRaidGate(){
   if(W.inDungeon){toast('已在地城中，請先離開');return;}
   if(_transitioning)return;
+  if(W.raidGatePos){
+    const hasPendingGrave=W.deathPos&&W.deathPos.dungeonIdx===100;
+    const warn=hasPendingGrave
+      ?'地城中還有尚未取回的遺物！重新開啟傳送門會放棄目前進度與遺物，確定嗎？'
+      :'已有一座地城傳送門。重新開啟會放棄目前的地城進度，生成全新的地城，確定嗎？';
+    if(!confirm(warn))return;
+    const oi=W.raidGatePos.y*SIZE+W.raidGatePos.x;
+    if(W.obj[oi]===O.RAID_GATE)W.obj[oi]=O.NONE;
+    for(const k of Object.keys(W.dungeons)){if(k.startsWith('100_'))delete W.dungeons[k];}
+    if(hasPendingGrave){W.deathItems=null;W.deathPos=null;}
+  }
   const mf=3+Math.floor(Math.random()*5);
   W.raidCounter=(W.raidCounter||0)+1;
   const rs=W.seedStr+'_raid_'+W.raidCounter;
-  for(const k of Object.keys(W.dungeons)){if(k.startsWith('100_'))delete W.dungeons[k];}
-  if(W.deathPos&&W.deathPos.dungeonIdx===100){W.deathItems=null;W.deathPos=null;}
-  W.dungeonMaxFloor=mf;W.raidSeedStr=rs;
+  W.raidSeedStr=rs;W.raidMaxFloor=mf;
+  W.dungeons['100_1']=genDungeon(rs,100,1,mf);
+  // 在紀念碑附近尋找空地放置傳送門
+  let gx=_monuFaceX,gy=_monuFaceY;
+  outerGate:for(let r=0;r<=6;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    if(r>0&&Math.abs(dx)<r&&Math.abs(dy)<r)continue;
+    const tx=_monuFaceX+dx,ty=_monuFaceY+dy;
+    if(tx>0&&ty>0&&tx<SIZE-1&&ty<SIZE-1&&landEmpty(ty*SIZE+tx)){gx=tx;gy=ty;break outerGate;}
+  }
+  W.obj[gy*SIZE+gx]=O.RAID_GATE;W.raidGatePos={x:gx,y:gy};
+  mmDirty=true;
+  toast('🌀 隨機地城傳送門已開啟！B1~'+mf+'F，走上傳送門即可進入！');
+}
+
+function enterRaidDungeonViaGate(){
+  if(W.inDungeon||_transitioning)return;
+  if(!W.raidSeedStr||!W.dungeons['100_1']){toast('傳送門好像故障了…');return;}
   _transitioning=true;
   const fade=document.getElementById('fade');fade.style.opacity=1;
   setTimeout(()=>{
-    W._surface={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,px:W.px,py:W.py,enemies:W.enemies||[]};
-    const key='100_1';
-    W.dungeons[key]=genDungeon(rs,100,1,mf);
-    const d=W.dungeons[key];
+    W._surface={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,px:W.px,py:W.py,enemies:W.enemies||[],animals:W.animals||[]};
+    W.animals=[];
+    W.dungeonMaxFloor=W.raidMaxFloor||5;
+    const d=W.dungeons['100_1'];
     W.ter=d.ter;W.obj=d.obj;W.aux=d.aux;W.disc=d.disc;
     W.enemies=d.enemies.map(e=>({...e}));
     W.px=d.spawnX;W.py=d.spawnY;
     W.inDungeon=true;W.dungeonIdx=100;W.dungeonFloor=1;W.face=0;
     camInit=false;mmDirty=true;discover();updateHUD();
-    toast('🌀 隨機地城 B1/'+mf+'F — 深入探索！');
+    toast('🌀 隨機地城 B1/'+(W.raidMaxFloor||5)+'F — 深入探索！');
     fade.style.opacity=0;_transitioning=false;
   },650);
 }
@@ -1762,6 +1789,7 @@ function tryMove(d){
   if(W.obj[ni]===O.STAIRS_DOWN)goDownstairs();
   else if(W.obj[ni]===O.STAIRS_UP)goUpstairs();
   else if(W.obj[ni]===O.PORTAL)exitDungeon();
+  else if(W.obj[ni]===O.RAID_GATE)enterRaidDungeonViaGate();
 }
 
 /* ══════════ 漂浮字 ══════════ */
@@ -1925,6 +1953,21 @@ function drawObj(x,y,sx,sy){
     ctx.restore();
     ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';ctx.textAlign='center';
     ctx.fillText('出口',cx,sy+TS-4);
+  }else if(o===O.RAID_GATE){
+    const pulse=0.6+0.3*Math.abs(Math.sin((W.timeAcc||0)*4));
+    ctx.save();
+    const grad=ctx.createRadialGradient(cx,sy+TS/2,2,cx,sy+TS/2,14);
+    grad.addColorStop(0,`rgba(255,190,60,${pulse})`);
+    grad.addColorStop(1,'rgba(180,90,0,0)');
+    ctx.fillStyle=grad;ctx.beginPath();ctx.arc(cx,sy+TS/2,14,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=`rgba(255,220,140,${pulse})`;ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(cx,sy+TS/2,8,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle=`rgba(255,250,210,${pulse*.7})`;ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(cx,sy+TS/2,5,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=`rgba(255,240,200,${pulse})`;ctx.beginPath();ctx.arc(cx,sy+TS/2,3,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+    ctx.fillStyle='#fff';ctx.font='bold 8px sans-serif';ctx.textAlign='center';
+    ctx.fillText('地城',cx,sy+TS-4);
   }else if(o===O.STORAGE){
     // 木箱本體
     ctx.fillStyle='#7a4a20';ctx.fillRect(cx-11,sy+TS-22,22,18);
@@ -2142,12 +2185,13 @@ function save(){
       aux:Array.from(inD?W._surface.aux:W.aux),disc:Array.from(inD?W._surface.disc:W.disc),
       px:inD?W._surface.px:W.px,py:inD?W._surface.py:W.py,
       face:W.face,stam:W.stam,day:W.day,tod:W.tod,timeAcc:W.timeAcc,
-      inv:W.inv,equipped:W.equipped,equipDur:W.equipDur,animals:W.animals,
+      inv:W.inv,equipped:W.equipped,equipDur:W.equipDur,animals:inD?(W._surface.animals||[]):W.animals,
       stats:W.stats,questIdx:W.questIdx,freePlay:W.freePlay,ruinFound:W.ruinFound,
       hp:W.hp,maxHp:W.maxHp,deathPos:W.deathPos,deathItems:W.deathItems,
       dungeonCache,storages:W.storages||{},invDur:W.invDur||{},
       inDungeon:W.inDungeon||false,dungeonIdx:W.dungeonIdx||-1,dungeonFloor:W.dungeonFloor||0,
       dungeonMaxFloor:W.dungeonMaxFloor||5,raidSeedStr:W.raidSeedStr||'',raidCounter:W.raidCounter||0,
+      raidMaxFloor:W.raidMaxFloor||0,raidGatePos:W.raidGatePos||null,
       dungeonPx:inD?W.px:undefined,dungeonPy:inD?W.py:undefined};
     localStorage.setItem(SAVE_KEY,JSON.stringify(d));
   }catch(e){}
@@ -2195,6 +2239,7 @@ function load(){
       hp:d.hp||100,maxHp:d.maxHp||100,
       enemies:[],inDungeon:false,dungeonIdx:-1,dungeonFloor:0,
       dungeonMaxFloor:d.dungeonMaxFloor||5,raidSeedStr:d.raidSeedStr||'',raidCounter:d.raidCounter||0,
+      raidMaxFloor:d.raidMaxFloor||0,raidGatePos:d.raidGatePos||null,
       dungeons,_surface:null,
       deathPos:d.deathPos||null,deathItems:d.deathItems||null,
       storages:d.storages||{},invDur:migratedInvDur,_fishing:null});
@@ -2202,7 +2247,8 @@ function load(){
     // 若上次存檔時在地城中，還原地城狀態
     if(d.inDungeon&&d.dungeonIdx>=0&&d.dungeonPx!=null){
       w._surface={ter:w.ter,obj:w.obj,aux:w.aux,disc:w.disc,
-        px:d.px,py:d.py,enemies:[]};
+        px:d.px,py:d.py,enemies:[],animals:w.animals||[]};
+      w.animals=[];
       w.inDungeon=true;w.dungeonIdx=d.dungeonIdx;w.dungeonFloor=d.dungeonFloor||0;
       w.px=d.dungeonPx;w.py=d.dungeonPy;
       const dkey=d.dungeonIdx+'_'+(d.dungeonFloor||0);
