@@ -163,7 +163,7 @@
 
 ---
 
-## Wave 6 🔲 — 稀有金屬與進階鍛造（待實作）
+## Wave 6 ✅ — 稀有金屬與進階鍛造
 
 ### 6-1 金屬等級進程
 
@@ -171,15 +171,137 @@
 鐵（Iron）→ 銀（Silver）→ 金（Gold）→ 秘銀（Mithril）
 ```
 
-- 每種金屬需對應等級的稿才能採集（鐵稿採鐵、銀稿採銀…）
-- 稀有金屬礦只出現在地城深層（B3+）
+**核心原則**：
+- 每種金屬需對應等級的稿才能採集（鐵稿採鐵、銀稿採銀…），無法跳階
 - 鍛造配方：金屬錠 + 木材（柄）→ 對應等級工具/武器
+- 每一階材料消耗約前一階的 1.5~2.0 倍，ATK 遞增倍率 1.5~1.6（遞減，避免指數爆炸）
 
-### 6-2 高階工坊（Advanced Workshop）
+**金屬來源**：
+- 鐵：地表山地（已有 iron_ore + coal）
+- 銀：地城 B3+（skeleton 掉落率提升，BOSS 寶箱 guaranteed）
+- 金：地城 B4+
+- 秘銀：地城 B5（BOSS 寶箱）
 
-- 高階裝備需要「高階工坊」（不同於基礎鍛造爐）
-- 高階工坊可能需要稀有素材建造
-- 討論中提到未來可能有「工廠」建築角色
+### 6-2 完整裝備表（武器、工具、防具）
+
+**武器（ATK 遞增）**：
+
+| 等級 | 武器 | ATK | 配方 (forge) |
+|------|------|-----|-------------|
+| 木 | 木劍 | +5 | wood×5 (hand) |
+| 石 | 石劍 | +12 | stone×6 + wood×1 (workbench) |
+| 鐵 | 鐵劍 | +20 | iron_ingot×3 + wood×1 |
+| 銀 | 銀劍 | +32 | silver_ingot×3 + wood×1 |
+| 金 | 金劍 | +50 | gold_ingot×3 + wood×1 |
+| 秘銀 | 秘銀劍 | +75 | mithril_ingot×3 + wood×1 + relic×1 |
+
+**採集工具**：
+
+| 等級 | 斧 (採木) | 稿 (山地) | 配方 (forge) |
+|------|-----------|-----------|-------------|
+| 木 | ×2 | — | wood×3 (hand) |
+| 石 | ×3 | ×1.5 | wood×1 + stone×2 (workbench) |
+| 鐵 | ×5 | ×2 | iron_ingot×2 + wood×1 |
+| 銀 | ×8 | ×2 + 可採銀礦 | silver_ingot×4 + wood×1 |
+| 金 | ×12 | ×3 + 可採金礦 | gold_ingot×6 + wood×2 |
+| 秘銀 | ×18 | ×4 + 可採秘銀 + coal+50% | mithril_ingot×10 + wood×3 + relic×1 |
+
+**防具（DEF 遞增）**：
+
+| 等級 | 帽子 | 身體 | 靴子 | 手套 |
+|------|------|------|------|------|
+| 初始 | 草帽(1) | 粗布衣(2) | 皮靴(1) | 工作手套(1) |
+| 強化 | 厚外套(3) | 羊毛大衣(4) | — | — |
+| **鐵系** | 鐵帽(2) | 鐵甲(3) | 鐵靴(2) | 鐵手套(2) |
+| **銀系** | 銀帽(3) | 銀甲(4) | 銀靴(3) | 銀手套(3) |
+| **金系** | 金帽(4) | 金甲(5) | 金靴(4) | 金手套(4) |
+| **秘銀系** | 秘銀帽(5) | 秘銀甲(7) | 秘銀靴(5) | 秘銀手套(5) |
+
+**耐久度**：
+
+| 武器 | durability |
+|------|------|
+| 木劍 | 30 |
+| 石劍 | 50 |
+| 鐵劍 | 80 |
+| 銀劍 | 100 |
+| 金劍 | 140 |
+| 秘銀劍 | 180 |
+
+### 6-3 鍛造配方總覽（forge）
+
+**金屬錠 → 金屬錠**（原料難度不變，但下一階需上一階錠作引）：
+- iron_ore×3 + coal×2 → iron_ingot（已有）
+- silver_ore×3 + coal×2 → silver_ingot（新增）
+- gold_ore×2 + silver_ore×3 → gold_ingot（新增，需銀錠作引）
+- mithril_ore×3 + gold_ore×3 → mithril_ingot（新增，需金錠作引）
+
+**武器**：
+- iron_ingot×3 + wood×1 → iron_sword
+- silver_ingot×3 + wood×1 → silver_sword
+- gold_ingot×3 + wood×1 → gold_sword
+- mithril_ingot×3 + wood×1 + relic×1 → mithril_sword
+
+**工具**：
+- iron_ingot×2 + wood×1 → iron_axe / iron_pick（已有）
+- silver_ingot×4 + wood×1 → silver_axe / silver_pick
+- gold_ingot×6 + wood×2 → gold_axe / gold_pick
+- mithril_ingot×10 + wood×3 + relic×1 → mithril_axe / mithril_pick
+
+**防具**：
+- iron_ingot×2 + wood×1 → iron_hat / iron_boots / iron_gloves
+- iron_ingot×3 + wood×1 → iron_armor
+- silver_ingot×3 + cloth×3 → silver_hat / silver_boots / silver_gloves
+- silver_ingot×4 + cloth×4 → silver_armor
+- gold_ingot×3 + cloth×4 → gold_hat / gold_boots / gold_gloves
+- gold_ingot×5 + cloth×5 → gold_armor
+- mithril_ingot×3 + cloth×5 + relic×1 → mithril_hat / mithril_boots / mithril_gloves
+- mithril_ingot×8 + cloth×6 + relic×2 → mithril_armor
+
+### 6-4 高階工坊（Advanced Forge）
+
+- 現有 forge（O.FORGE）可升級為 advanced_forge
+- 升級成本：iron_ingot×10 + relic×3
+- 升級後永久有效（一張地圖只有一座，升級後全開）
+- 解鎖銀 / 金 / 秘銀所有配方
+- 升級前 forge 仍可鍛造鐵系裝備，不受影響
+
+### 6-5 非免洗設計原則
+
+**時間即貨幣（非重複刷）**：
+- 銀/金/秘銀礦脈只刷新一次（或極低概率自然重生）
+- 想拿更多稀有礦＝去更深的地城
+
+**連鎖遞進（工具必須升級才能採）**：
+- 鐵稿 → 採鐵礦
+- 銀稿 → 採銀礦（需先有鐵系工具）
+- 金稿 → 採金礦
+- 秘銀稿 → 採秘銀礦
+- 沒有捷徑
+
+**鍛造門檻遞增**：
+- 鐵裝 → forge 即可
+- 銀裝 → forge + iron_ingot×5（先做鐵裝才能煉銀）
+- 金裝 → forge + silver_ingot×5
+- 秘銀裝 → forge + gold_ingot×3 + relic×2
+
+**里程碑感**：
+- 每 15–20 分鐘小里程碑（獲得第一件銀裝）
+- 每 30–45 分鐘大里程碑（打造全套秘銀）
+
+### 6-6 實作摘要（2026-06-28）
+
+- `lib/data.js`：新增 silver/gold/mithril 礦石、錠、武器、工具、防具；新增鐵系防具（hat/armor/boots/gloves）；新增全部 forge 配方
+- `lib/worldgen.js`：`genDungeon` 新增稀有金屬礦生成（B3+），aux 陣列編碼礦種（-2=銀、-3=金、-4=秘銀）
+- `小島開拓誌.html`：
+  - `checkHarvest`：新增銀稿/金稿/秘銀稿採集倍率
+  - `O.ROCK` 互動：偵測 aux 編碼，給對應礦石；需對應等級稿
+  - `T.MTN` 互動：mithril_pick 給 80% 煤炭；silver/gold pick 50%
+  - `genChestLoot`：B3+ 銀系 / B4+ 金系 / B5 秘銀系裝備與礦石掉落
+  - `doCraft`：`adv_forge` 配方升級 `W.advancedForge`，解鎖銀/金/秘銀
+  - `renderCraftList`：隱藏未解鎖的銀/金/秘銀配方
+  - 高階工坊視覺：金邊脈動光暈
+  - 存檔：`W.advancedForge` 持久化
 
 ---
 

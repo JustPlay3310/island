@@ -324,15 +324,18 @@ function checkHarvest(resKind){
   const tool=equippedHand();
   if(resKind==='stone'){
     if(!tool||(!tool.includes('pick'))){return{ok:true,mul:0.5,bare:true};}
-    const mul=tool==='iron_pick'?2:1;
-    return{ok:true,mul};
+    if(tool==='iron_pick')return{ok:true,mul:2};
+    if(tool==='silver_pick')return{ok:true,mul:3};
+    if(tool==='gold_pick')return{ok:true,mul:4};
+    if(tool==='mithril_pick')return{ok:true,mul:5};
+    return{ok:true,mul:1};
   }
   if(resKind==='clay'){
-    const mul={stone_pick:1.5,iron_pick:2}[tool]||1;
+    const mul={stone_pick:1.5,iron_pick:2,silver_pick:3,gold_pick:4,mithril_pick:5}[tool]||1;
     return{ok:true,mul};
   }
   if(resKind==='wood'){
-    const mul={wooden_axe:2,stone_axe:3,iron_axe:5}[tool]||1;
+    const mul={wooden_axe:2,stone_axe:3,iron_axe:5,silver_axe:8,gold_axe:12,mithril_axe:18}[tool]||1;
     return{ok:true,mul};
   }
   return{ok:true,mul:1};
@@ -507,7 +510,11 @@ function renderCraftList(){
   const el=document.getElementById('craftList');el.innerHTML='';
   const recipes=RECIPES.filter(r=>r.req===craftTab);
   if(!recipes.length){const e=document.createElement('div');e.style.cssText='color:#8a7a52;font-size:12px;padding:8px';e.textContent='此平台暫無配方';el.appendChild(e);return;}
-  for(const r of recipes){
+  // 銀/金/秘銀配方：需升級高階工坊
+  const rareIds=new Set(['silver_axe','silver_pick','silver_sword','silver_hat','silver_armor','silver_boots','silver_gloves','gold_axe','gold_pick','gold_sword','gold_hat','gold_armor','gold_boots','gold_gloves','mithril_axe','mithril_pick','mithril_sword','mithril_hat','mithril_armor','mithril_boots','mithril_gloves','silver_ingot','gold_ingot','mithril_ingot','adv_forge']);
+  const filtered=recipes.filter(r=>!rareIds.has(r.id)||W.advancedForge);
+  const hiddenCount=recipes.length-filtered.length;
+  for(const r of filtered){
     const afford=canAfford(r.cost);
     const d=document.createElement('div');d.className='ritem'+(afford?'':' cant');
     const makeable=afford?'':'disabled';
@@ -515,11 +522,22 @@ function renderCraftList(){
     d.querySelector('.rmake').onclick=()=>doCraft(r);
     el.appendChild(d);
   }
+  if(hiddenCount>0){
+    const e=document.createElement('div');e.style.cssText='font-size:11px;color:#8a7a52;padding:4px';
+    e.textContent=(W.advancedForge?'已':'未')+'解鎖高階工坊（還隱藏 '+hiddenCount+' 種銀/金/秘銀配方）';
+    el.appendChild(e);
+  }
 }
 function renderCraftPanel(){renderCraftTabs();renderCraftList();}
 function doCraft(recipe){
   if(!canAfford(recipe.cost)){toast('材料不足:'+costStr(recipe.cost));sfx('no');return;}
   for(const k in recipe.cost)W.inv[k]-=recipe.cost[k];
+  // ── 高階工坊升級 ──
+  if(recipe.id==='adv_forge'){
+    W.advancedForge=true;sfx('build');
+    toast('⚒️ 鍛造爐升級為高階工坊！解鎖銀/金/秘銀配方。');
+    renderInv();renderCraftPanel();checkQuest();return;
+  }
   if(!W.invDur)W.invDur={};
   for(const k in recipe.gives){
     W.inv[k]=(W.inv[k]||0)+recipe.gives[k];
@@ -1292,8 +1310,32 @@ function genChestLoot(floor){
   roll('coal',      1+Math.floor(Math.random()*2), floor>=2?0.6:0.2);
   roll('iron_ore',  1+Math.floor(Math.random()*3), floor>=2?0.5:0.1);
   roll('iron_ingot',1+Math.floor(Math.random()*2), floor>=3?0.4:0);
+  // ── B3+ 銀系 ──
+  roll('silver_ore',1+Math.floor(Math.random()*2), floor>=3?0.35:0);
+  roll('silver_ingot',floor>=3?1:0, floor>=3?0.2:0);
+  roll('silver_sword',1, floor>=3?0.12:0);
+  roll('silver_axe', 1, floor>=3?0.08:0);
+  roll('silver_hat', 1, floor>=3?0.08:0);
+  roll('silver_boots',1, floor>=3?0.08:0);
+  roll('silver_gloves',1, floor>=3?0.08:0);
+  // ── B4+ 金系 ──
+  roll('gold_ore',  1+Math.floor(Math.random()*2), floor>=4?0.3:0);
+  roll('gold_ingot',floor>=4?1:0, floor>=4?0.15:0);
+  roll('gold_sword', 1, floor>=4?0.10:0);
+  roll('gold_axe',   1, floor>=4?0.06:0);
+  roll('gold_hat',   1, floor>=4?0.06:0);
+  roll('gold_boots', 1, floor>=4?0.06:0);
+  roll('gold_gloves',1, floor>=4?0.06:0);
+  // ── B5 秘銀 ──
+  roll('mithril_ore',1+Math.floor(Math.random()*2), floor>=5?0.25:0);
+  roll('mithril_ingot',floor>=5?1:0, floor>=5?0.12:0);
+  roll('mithril_sword',1, floor>=5?0.08:0);
+  roll('mithril_axe',  1, floor>=5?0.05:0);
+  roll('mithril_hat',  1, floor>=5?0.05:0);
+  roll('mithril_boots',1, floor>=5?0.05:0);
+  roll('mithril_gloves',1, floor>=5?0.05:0);
   roll('relic',     1, floor>=4?0.4:0);
-  // Equipment drops (deeper floors = better gear)
+  // 基礎裝備掉落
   roll('stone_sword',1, floor>=2?0.12:0.05);
   roll('stone_axe',  1, floor>=2?0.08:0.03);
   roll('hat',        1, floor>=2?0.08:0.03);
@@ -1465,8 +1507,31 @@ function contextAction(){
   }
   if(o===O.ROCK){
     const chk=checkHarvest('stone');
-    const rockLabel=chk.bare?'徒手鑿石(效率低,先湊 3 顆做石稿)':'開採岩石';
-    return{label:rockLabel,run(){const n=Math.max(1,Math.round((2+Math.floor(Math.random()*2))*chk.mul));gain('stone',n,f);if(!chk.bare&&Math.random()<0.2)gain('coal',1,f);W.obj[f.i]=O.NONE;if(!chk.bare)wearEquip('hand');sfx('chop');},stam:chk.bare?12:7};
+    const auxVal=W.aux[f.i]||0;
+    // aux < 0 encodes ore type: -2=silver_ore, -3=gold_ore, -4=mithril_ore
+    const oreType={-2:'silver_ore',-3:'gold_ore',-4:'mithril_ore'}[-auxVal]||null;
+    const oreMul={silver_ore:1,gold_ore:1,mithril_ore:1}[oreType]||1;
+    const hasPick=chk.ok&&!chk.bare;
+    // 礦石需對應等級稿
+    const orePickReq={silver_ore:'silver_pick',gold_ore:'gold_pick',mithril_ore:'mithril_pick'};
+    const reqPick=oreType?orePickReq[oreType]:null;
+    if(oreType&&reqPick&&(!tool||tool!==reqPick)){
+      return{label:'需要'+EQUIP_DEF[reqPick]?.name||'高級稿'+'才能採集',run(){toast('需要更好的稿子');sfx('no');},stam:0,soft:1};
+    }
+    const rockLabel=oreType?(oreType==='silver_ore'?'採集銀礦石':oreType==='gold_ore'?'採集金礦石':'採集秘銀礦'):(chk.bare?'徒手鑿石(效率低,先湊 3 顆做石稿)':'開採岩石');
+    return{label:rockLabel,run(){
+      const stoneN=Math.max(1,Math.round((2+Math.floor(Math.random()*2))*chk.mul));
+      if(oreType){
+        gain(oreType,1,f);
+        if(!hasPick)gain('stone',1,f);
+      }else{
+        gain('stone',stoneN,f);
+        if(!chk.bare&&Math.random()<0.2)gain('coal',1,f);
+      }
+      W.obj[f.i]=O.NONE;
+      if(!chk.bare)wearEquip('hand');
+      sfx('chop');
+    },stam:oreType?10:7};
   }
   if(o===O.BERRY){
     if(W.aux[f.i]<0)return{label:'採摘漿果',run(){gain('food',2,f);if(Math.random()<.4)gain('seed',1);W.aux[f.i]=W.timeAcc+75;sfx('pick');},stam:3};
@@ -1503,8 +1568,12 @@ function contextAction(){
       :{label:'播種(缺種子)',run(){toast('沒有種子。漿果/野花/遺跡都有機會找到');},stam:0,soft:1};
   if(t===T.MTN){
     const tool=equippedHand();
+    if(tool==='mithril_pick')
+      return{label:'開採山脈（鐵礦石）',run(){gain('iron_ore',1+Math.floor(Math.random()*2),f);if(Math.random()<0.8)gain('coal',1,f);wearEquip('hand');sfx('chop');},stam:15};
     if(tool==='iron_pick')
       return{label:'開採山脈（鐵礦石）',run(){gain('iron_ore',1+Math.floor(Math.random()*2),f);if(Math.random()<0.3)gain('coal',1,f);wearEquip('hand');sfx('chop');},stam:15};
+    if(tool==='silver_pick'||tool==='gold_pick')
+      return{label:'開採山脈（鐵礦石）',run(){gain('iron_ore',1+Math.floor(Math.random()*2),f);if(Math.random()<0.5)gain('coal',1,f);wearEquip('hand');sfx('chop');},stam:15};
     return{label:'堅硬的山脈',run(){toast('需要鐵稿才能開採山地');sfx('no');},stam:0,soft:1};
   }
   if(t===T.WATER||t===T.DEEP){
@@ -1900,6 +1969,12 @@ function drawObj(x,y,sx,sy){
     ctx.fillStyle='#8a7a68';ctx.fillRect(cx-4,sy+4,8,8);
     // 高光
     ctx.fillStyle='rgba(255,255,200,.12)';ctx.fillRect(cx-12,sy+11,22,2);
+    // ── 高階工坊：金邊脈動光暈 ──
+    if(W.advancedForge){
+      ctx.save();ctx.globalAlpha=0.25+Math.sin(W.timeAcc*5)*0.1;
+      ctx.strokeStyle='#ffd700';ctx.lineWidth=2;ctx.strokeRect(cx-13,sy+10,26,TS-16);
+      ctx.restore();
+    }
   }else if(o===O.STAIRS_UP||o===O.STAIRS_DOWN){
     const up=o===O.STAIRS_UP;
     // 背景光暈
@@ -2189,6 +2264,7 @@ function save(){
       stats:W.stats,questIdx:W.questIdx,freePlay:W.freePlay,ruinFound:W.ruinFound,
       hp:W.hp,maxHp:W.maxHp,deathPos:W.deathPos,deathItems:W.deathItems,
       dungeonCache,storages:W.storages||{},invDur:W.invDur||{},
+      advancedForge:W.advancedForge||false,
       inDungeon:W.inDungeon||false,dungeonIdx:W.dungeonIdx||-1,dungeonFloor:W.dungeonFloor||0,
       dungeonMaxFloor:W.dungeonMaxFloor||5,raidSeedStr:W.raidSeedStr||'',raidCounter:W.raidCounter||0,
       raidMaxFloor:W.raidMaxFloor||0,raidGatePos:W.raidGatePos||null,
@@ -2242,7 +2318,7 @@ function load(){
       raidMaxFloor:d.raidMaxFloor||0,raidGatePos:d.raidGatePos||null,
       dungeons,_surface:null,
       deathPos:d.deathPos||null,deathItems:d.deathItems||null,
-      storages:d.storages||{},invDur:migratedInvDur,_fishing:null});
+      storages:d.storages||{},invDur:migratedInvDur,_fishing:null,advancedForge:d.advancedForge||false});
     w.stats=Object.assign({gWood:0,gStone:0,fires:0,huts:0,farmsSown:0,cropsHarvested:0,bridges:0,ruinsFound:0,monu:0,builds:0,workbenches:0,tamed:0},w.stats);
     // 若上次存檔時在地城中，還原地城狀態
     if(d.inDungeon&&d.dungeonIdx>=0&&d.dungeonPx!=null){
