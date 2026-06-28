@@ -1509,7 +1509,7 @@ function contextAction(){
     const chk=checkHarvest('stone');
     const auxVal=W.aux[f.i]||0;
     // aux < 0 encodes ore type: -2=silver_ore, -3=gold_ore, -4=mithril_ore
-    const oreType={-2:'silver_ore',-3:'gold_ore',-4:'mithril_ore'}[-auxVal]||null;
+    const oreType={'-2':'silver_ore','-3':'gold_ore','-4':'mithril_ore'}[auxVal]||null;
     const oreMul={silver_ore:1,gold_ore:1,mithril_ore:1}[oreType]||1;
     const hasPick=chk.ok&&!chk.bare;
     // 礦石需對應等級稿
