@@ -303,6 +303,14 @@
   - 高階工坊視覺：金邊脈動光暈
   - 存檔：`W.advancedForge` 持久化
 
+### 6-7 保險箱耐久追蹤 + 拆除/復原（2026-06-28）
+
+- `renderStoragePanel`：存入裝備時將耐久值寫入 `st[item+'_dur']` 陣列；取出時從該陣列彈出恢復原始耐久
+- 拆建築：面向 O.FIRE/O.HUT/O.WORKBENCH/O.LOOM/O.FORGE/O.WELL/O.STORAGE/O.MONU/O.PORTAL/O.RAID_GATE 顯示「拆」選項，回收 50% 建造資源
+- 地形復原：面向 T.ROCKY 顯示「翻土復原」耗 5 體力將岩地轉為草地
+- 道路拆除：T.PATH / T.BRIDGE 可拆除回收資源
+- 存多焦點：`requestAnimationFrame(()=>{ok.focus()})`
+
 ---
 
 ## Wave 7 🔲 — 古代書頁與神裝系統（待實作）
