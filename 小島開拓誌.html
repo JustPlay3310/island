@@ -387,6 +387,10 @@ const BUILDS=[
    place(x,y,i){if(!(grassy(W.ter[i])&&W.obj[i]===O.NONE))return 0;W.obj[i]=O.SAPLING;W.aux[i]=0;return 1;}},
 ];
 
+/* ══════════ O 型別 → BUILD 反向查表（拆除用）══════════ */
+const O_TO_BUILD={};
+BUILDS.forEach(b=>{if(b.cost)O_TO_BUILD[b.id]=b;});
+
 /* ══════════ 全域狀態 ══════════ */
 let W=null,running=false;
 const cv=document.getElementById('game'),ctx=cv.getContext('2d');
@@ -1087,7 +1091,11 @@ function renderStoragePanel(){
       b1.onclick=()=>{
         W.inv[rk]=(W.inv[rk]||0)+1;st[rk]--;if(st[rk]<=0)delete st[rk];
         const def2=EQUIP_DEF[rk];
-        if(def2&&def2.durability!=null){if(!W.invDur)W.invDur={};(W.invDur[rk]=W.invDur[rk]||[]).push(def2.durability);}
+        if(def2&&def2.durability!=null&&W.invDur){
+          const durArr=st[rk+'_dur']||[];
+          if(durArr.length>0){const d=durArr.pop();W.invDur[rk]=(W.invDur[rk]||[]);W.invDur[rk].push(d);if(!durArr.length)delete st[rk+'_dur'];}
+          else{if(!W.invDur[rk])W.invDur[rk]=[];W.invDur[rk].push(def2.durability);}
+        }
         renderStoragePanel();renderInv();
       };
       row.appendChild(b1);
@@ -1096,7 +1104,14 @@ function renderStoragePanel(){
     ba.onclick=()=>{
       W.inv[rk]=(W.inv[rk]||0)+n;delete st[rk];
       const def2=EQUIP_DEF[rk];
-      if(def2&&def2.durability!=null){if(!W.invDur)W.invDur={};for(let _i=0;_i<n;_i++)(W.invDur[rk]=W.invDur[rk]||[]).push(def2.durability);}
+      if(def2&&def2.durability!=null&&W.invDur){
+        const durArr=st[rk+'_dur']||[];
+        for(let _i=0;_i<n;_i++){
+          if(durArr.length>0){const d=durArr.pop();W.invDur[rk]=(W.invDur[rk]||[]);W.invDur[rk].push(d);}
+          else{W.invDur[rk]=(W.invDur[rk]||[]);W.invDur[rk].push(def2.durability);}
+        }
+        if(durArr.length){st[rk+'_dur']=durArr;}else{delete st[rk+'_dur'];}
+      }
       renderStoragePanel();renderInv();
     };
     row.appendChild(ba);el.appendChild(row);
@@ -1116,7 +1131,8 @@ function renderStoragePanel(){
     const btn=document.createElement('button');btn.className='rmake st-btn';btn.textContent='卸下存入';
     btn.style.cssText='background:#7a5a28;color:#fff;white-space:nowrap';
     btn.onclick=()=>{
-      // 直接卸入箱子：耐久資訊不存入 invDur（儲存箱不追蹤耐久，取出時恢復滿值）
+      // 卸下存入：保留裝備的耐久度，存入儲存箱
+      if(W.equipDur[slot]!=null){st[eq+'_dur']=(st[eq+'_dur']||[]);st[eq+'_dur'].push(W.equipDur[slot]);}
       W.equipped[slot]=null;W.equipDur[slot]=null;
       st[eq]=(st[eq]||0)+1;
       renderStoragePanel();renderBagPanel();
@@ -1136,9 +1152,12 @@ function renderStoragePanel(){
     if(n>1){
       const b1=document.createElement('button');b1.className='rmake st-btn';b1.textContent='存1';
       b1.style.cssText='background:#3a7a28;color:#fff';
-      b1.onclick=()=>{
+       b1.onclick=()=>{
         const def2=EQUIP_DEF[rk];
-        if(def2&&def2.durability!=null){if(!W.invDur)W.invDur={};(W.invDur[rk]=W.invDur[rk]||[]).pop();}
+        if(def2&&def2.durability!=null&&W.invDur&&W.invDur[rk]){
+          const d=W.invDur[rk].pop();st[rk+'_dur']=(st[rk+'_dur']||[]);st[rk+'_dur'].push(d);
+          if(!W.invDur[rk].length)delete W.invDur[rk];
+        }
         st[rk]=(st[rk]||0)+1;W.inv[rk]--;renderStoragePanel();renderInv();
       };
       row.appendChild(b1);
@@ -1155,7 +1174,7 @@ function renderStoragePanel(){
           const qty=parseInt(sl.value);if(qty<=0){renderStoragePanel();return;}
           const def2=EQUIP_DEF[rk];
           if(def2&&def2.durability!=null&&W.invDur&&W.invDur[rk]){
-            for(let i=0;i<qty;i++)W.invDur[rk].pop();
+            for(let i=0;i<qty;i++){const d=W.invDur[rk].pop();st[rk+'_dur']=(st[rk+'_dur']||[]);st[rk+'_dur'].push(d);}
             if(!W.invDur[rk].length)delete W.invDur[rk];
           }
           st[rk]=(st[rk]||0)+qty;W.inv[rk]-=qty;renderStoragePanel();renderInv();
@@ -1164,6 +1183,7 @@ function renderStoragePanel(){
         ca.onclick=()=>renderStoragePanel();
         wrap.appendChild(sl);wrap.appendChild(numEl);wrap.appendChild(ok);wrap.appendChild(ca);
         row.appendChild(wrap);
+        requestAnimationFrame(()=>{ok.focus();});
       };
       row.appendChild(bm);
     }else{
@@ -1171,7 +1191,10 @@ function renderStoragePanel(){
       ba1.style.cssText='background:#3a7a28;color:#fff';
       ba1.onclick=()=>{
         const def2=EQUIP_DEF[rk];
-        if(def2&&def2.durability!=null){if(!W.invDur)W.invDur={};(W.invDur[rk]=W.invDur[rk]||[]).pop();}
+        if(def2&&def2.durability!=null&&W.invDur&&W.invDur[rk]){
+          const d=W.invDur[rk].pop();st[rk+'_dur']=(st[rk+'_dur']||[]);st[rk+'_dur'].push(d);
+          if(!W.invDur[rk].length)delete W.invDur[rk];
+        }
         st[rk]=(st[rk]||0)+1;W.inv[rk]=0;renderStoragePanel();renderInv();
       };
       row.appendChild(ba1);
@@ -1581,6 +1604,40 @@ function contextAction(){
     if(tool==='fishing_rod')
       return{label:'釣魚',run(){startFishing(f);},stam:3};
     return{label:'水面波光粼粼',run(){toast('可以蓋木橋,或持釣竿互動釣魚');},stam:0,soft:1};
+  }
+  // 地形復原（岩地→草地）
+  if(t===T.ROCKY){
+    return{label:'翻土復原（恢復草地）',run(){
+      if(W.stam<5){toast('體力不足，無法翻土');sfx('no');return;}
+      W.stam-=5;W.ter[f.i]=T.GRASS;sfx('build');toast('🌿 岩地恢復為草地');mmDirty=true;renderInv();
+    },stam:5};
+  }
+  // 地形拆除（石板路/木橋）
+  if(t===T.PATH||t===T.BRIDGE){
+    const cost=t===T.PATH?{stone:2}:{wood:4,fiber:1};
+    const ret=Object.fromEntries(Object.entries(cost).map(([k,v])=>[k,Math.ceil(v/2)]));
+    const label='拆（回收'+Object.entries(ret).map(([k,v])=>RESOURCES[k]?.ico||k+'×'+v).join(',')+'）';
+    return{label,run(){
+      W.ter[f.i]=t===T.PATH?T.SAND:T.WATER;
+      for(const[k,v]of Object.entries(ret))W.inv[k]=(W.inv[k]||0)+v;
+      toast('🔨 已拆除，回收資源');sfx('build');mmDirty=true;renderInv();
+    },stam:0};
+  }
+  // 拆除（可拆建築/道路）
+  const DEMOLISHABLE=new Set([O.FIRE,O.HUT,O.WORKBENCH,O.LOOM,O.FORGE,O.WELL,O.STORAGE,O.MONU,O.PORTAL,O.RAID_GATE]);
+  if(DEMOLISHABLE.has(o)){
+    const bld=O_TO_BUILD[Object.keys(O_TO_BUILD).find(k=>O[k]===o)];
+    const cost=bld?.cost;
+    if(cost){
+      const ret=Object.fromEntries(Object.entries(cost).map(([k,v])=>[k,Math.ceil(v/2)]));
+      const label='拆（回收'+Object.entries(ret).map(([k,v])=>RESOURCES[k]?.ico||k+'×'+v).join(',')+'）';
+      return{label,run(){
+        W.obj[f.i]=O.NONE;
+        for(const[k,v]of Object.entries(ret))W.inv[k]=(W.inv[k]||0)+v;
+        toast('🔨 建築已拆除，回收資源');sfx('build');mmDirty=true;renderInv();
+      },stam:0};
+    }
+    return{label:'拆除',run(){W.obj[f.i]=O.NONE;toast('🔨 建築已拆除');sfx('build');mmDirty=true;},stam:0};
   }
   // 野生動物（馴化），物件互動無結果時才觸發
   for(const a of W.animals){
