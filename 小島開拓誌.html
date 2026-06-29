@@ -380,6 +380,8 @@ const BUILDS=[
    place(x,y,i){if(!(W.ter[i]>=T.SAND&&W.ter[i]<=T.ROCKY&&W.ter[i]!==T.WATER&&W.obj[i]===O.NONE))return 0;W.ter[i]=T.PATH;return 1;}},
   {id:'fill',ico:'⛰️',name:'填土造地',desc:'把淺水填成沙地',cost:{stone:3},
    place(x,y,i){if(!(W.ter[i]===T.WATER&&W.obj[i]===O.NONE))return 0;W.ter[i]=T.SAND;return 1;}},
+  {id:'reclaim',ico:'🌿',name:'翻土復原',desc:'把岩地翻成草地',cost:{},stamCost:8,
+   place(x,y,i){if(!(W.ter[i]===T.ROCKY&&W.obj[i]===O.NONE))return 0;W.ter[i]=T.GRASS;return 1;}},
   {id:'pond',ico:'💧',name:'挖掘池塘',desc:'挖成水塘,順便得到黏土',cost:{},stamCost:10,
    place(x,y,i){if(!(grassy(W.ter[i])&&W.obj[i]===O.NONE))return 0;W.ter[i]=T.WATER;W.inv.clay+=1;return 1;}},
   {sec:'種植'},
@@ -1068,6 +1070,42 @@ function openStorage(i){
   const k=storageKey(i);if(!W.storages[k])W.storages[k]={};
   togglePanel('storagePanel');
 }
+// 數量選擇器：在 row 內展開 slider + 確定/取消，並把鍵盤焦點移到「確定」
+function openQtyPicker(row,triggerBtns,max,confirmLabel,onConfirm){
+  triggerBtns.forEach(b=>b.style.display='none');
+  const wrap=document.createElement('div');wrap.style.cssText='display:flex;align-items:center;gap:4px;margin-top:2px;width:100%;';
+  const sl=document.createElement('input');sl.type='range';sl.min=1;sl.max=max;sl.value=max;sl.style.cssText='flex:1;min-width:60px';
+  const numEl=document.createElement('span');numEl.textContent=max;numEl.style.cssText='min-width:22px;text-align:right;font-weight:700';
+  sl.oninput=()=>{numEl.textContent=sl.value;};
+  const ok=document.createElement('button');ok.className='rmake st-btn';ok.textContent=confirmLabel;ok.style.cssText='background:#2a6010;color:#fff';
+  ok.onclick=()=>{const qty=parseInt(sl.value);if(qty>0)onConfirm(qty);renderStoragePanel();};
+  const ca=document.createElement('button');ca.className='rmake st-btn';ca.textContent='取消';
+  ca.onclick=()=>renderStoragePanel();
+  wrap.appendChild(sl);wrap.appendChild(numEl);wrap.appendChild(ok);wrap.appendChild(ca);
+  row.appendChild(wrap);
+  // 鍵盤焦點移到「確定」（用面板導覽系統，而非原生 focus）
+  const items=getPanelFocusables();
+  const idx=items.indexOf(ok);if(idx>=0){panelFocusIdx=idx;updatePanelFocus();}
+}
+// 從箱子取出 n 件 rk 到背包，恢復耐久（箱內 st[rk+'_dur'] → W.invDur[rk]）
+function takeFromStorage(st,rk,n){
+  W.inv[rk]=(W.inv[rk]||0)+n;st[rk]-=n;if(st[rk]<=0)delete st[rk];
+  const def2=EQUIP_DEF[rk];
+  if(def2&&def2.durability!=null){
+    if(!W.invDur)W.invDur={};const durArr=st[rk+'_dur']||[];
+    for(let i=0;i<n;i++){const d=durArr.length>0?durArr.pop():def2.durability;(W.invDur[rk]=W.invDur[rk]||[]).push(d);}
+    if(durArr.length)st[rk+'_dur']=durArr;else delete st[rk+'_dur'];
+  }
+}
+// 從背包存入 n 件 rk 到箱子，保留耐久（W.invDur[rk] → st[rk+'_dur']）
+function putToStorage(st,rk,n){
+  st[rk]=(st[rk]||0)+n;W.inv[rk]-=n;
+  const def2=EQUIP_DEF[rk];
+  if(def2&&def2.durability!=null&&W.invDur&&W.invDur[rk]){
+    for(let i=0;i<n&&W.invDur[rk].length;i++){const d=W.invDur[rk].pop();(st[rk+'_dur']=st[rk+'_dur']||[]).push(d);}
+    if(!W.invDur[rk].length)delete W.invDur[rk];
+  }
+}
 function renderStoragePanel(){
   if(currentStorageIdx<0)return;
   const k=storageKey(currentStorageIdx);
@@ -1088,33 +1126,16 @@ function renderStoragePanel(){
     row.innerHTML=`<span style="width:22px;text-align:center">${res.ico}</span><span style="flex:1">${res.name}</span><b>${n}</b>`;
     if(n>1){
       const b1=document.createElement('button');b1.className='rmake st-btn';b1.textContent='取1';
-      b1.onclick=()=>{
-        W.inv[rk]=(W.inv[rk]||0)+1;st[rk]--;if(st[rk]<=0)delete st[rk];
-        const def2=EQUIP_DEF[rk];
-        if(def2&&def2.durability!=null&&W.invDur){
-          const durArr=st[rk+'_dur']||[];
-          if(durArr.length>0){const d=durArr.pop();W.invDur[rk]=(W.invDur[rk]||[]);W.invDur[rk].push(d);if(!durArr.length)delete st[rk+'_dur'];}
-          else{if(!W.invDur[rk])W.invDur[rk]=[];W.invDur[rk].push(def2.durability);}
-        }
-        renderStoragePanel();renderInv();
-      };
+      b1.onclick=()=>{takeFromStorage(st,rk,1);renderStoragePanel();renderInv();};
       row.appendChild(b1);
+      const bm=document.createElement('button');bm.className='rmake st-btn';bm.textContent='取多';
+      bm.onclick=()=>openQtyPicker(row,[b1,bm],n,'取出',(qty)=>{takeFromStorage(st,rk,qty);renderInv();});
+      row.appendChild(bm);el.appendChild(row);
+    }else{
+      const ba=document.createElement('button');ba.className='rmake st-btn';ba.textContent='取出';
+      ba.onclick=()=>{takeFromStorage(st,rk,1);renderStoragePanel();renderInv();};
+      row.appendChild(ba);el.appendChild(row);
     }
-    const ba=document.createElement('button');ba.className='rmake st-btn';ba.textContent='取出';
-    ba.onclick=()=>{
-      W.inv[rk]=(W.inv[rk]||0)+n;delete st[rk];
-      const def2=EQUIP_DEF[rk];
-      if(def2&&def2.durability!=null&&W.invDur){
-        const durArr=st[rk+'_dur']||[];
-        for(let _i=0;_i<n;_i++){
-          if(durArr.length>0){const d=durArr.pop();W.invDur[rk]=(W.invDur[rk]||[]);W.invDur[rk].push(d);}
-          else{W.invDur[rk]=(W.invDur[rk]||[]);W.invDur[rk].push(def2.durability);}
-        }
-        if(durArr.length){st[rk+'_dur']=durArr;}else{delete st[rk+'_dur'];}
-      }
-      renderStoragePanel();renderInv();
-    };
-    row.appendChild(ba);el.appendChild(row);
   }
   // ── 分隔 ──
   const sep=document.createElement('hr');sep.style.margin='8px 0';el.appendChild(sep);
@@ -1152,51 +1173,16 @@ function renderStoragePanel(){
     if(n>1){
       const b1=document.createElement('button');b1.className='rmake st-btn';b1.textContent='存1';
       b1.style.cssText='background:#3a7a28;color:#fff';
-       b1.onclick=()=>{
-        const def2=EQUIP_DEF[rk];
-        if(def2&&def2.durability!=null&&W.invDur&&W.invDur[rk]){
-          const d=W.invDur[rk].pop();st[rk+'_dur']=(st[rk+'_dur']||[]);st[rk+'_dur'].push(d);
-          if(!W.invDur[rk].length)delete W.invDur[rk];
-        }
-        st[rk]=(st[rk]||0)+1;W.inv[rk]--;renderStoragePanel();renderInv();
-      };
+      b1.onclick=()=>{putToStorage(st,rk,1);renderStoragePanel();renderInv();};
       row.appendChild(b1);
       const bm=document.createElement('button');bm.className='rmake st-btn';bm.textContent='存多';
       bm.style.cssText='background:#2a6010;color:#fff';
-      bm.onclick=()=>{
-        bm.style.display='none';b1.style.display='none';
-        const wrap=document.createElement('div');wrap.style.cssText='display:flex;align-items:center;gap:4px;margin-top:2px;';
-        const sl=document.createElement('input');sl.type='range';sl.min=1;sl.max=n;sl.value=n;sl.style.cssText='flex:1;min-width:60px';
-        const numEl=document.createElement('span');numEl.textContent=n;numEl.style.cssText='min-width:22px;text-align:right;font-weight:700';
-        sl.oninput=()=>{numEl.textContent=sl.value;};
-        const ok=document.createElement('button');ok.className='rmake st-btn';ok.textContent='確定';ok.style.cssText='background:#2a6010;color:#fff';
-        ok.onclick=()=>{
-          const qty=parseInt(sl.value);if(qty<=0){renderStoragePanel();return;}
-          const def2=EQUIP_DEF[rk];
-          if(def2&&def2.durability!=null&&W.invDur&&W.invDur[rk]){
-            for(let i=0;i<qty;i++){const d=W.invDur[rk].pop();st[rk+'_dur']=(st[rk+'_dur']||[]);st[rk+'_dur'].push(d);}
-            if(!W.invDur[rk].length)delete W.invDur[rk];
-          }
-          st[rk]=(st[rk]||0)+qty;W.inv[rk]-=qty;renderStoragePanel();renderInv();
-        };
-        const ca=document.createElement('button');ca.className='rmake st-btn';ca.textContent='取消';
-        ca.onclick=()=>renderStoragePanel();
-        wrap.appendChild(sl);wrap.appendChild(numEl);wrap.appendChild(ok);wrap.appendChild(ca);
-        row.appendChild(wrap);
-        requestAnimationFrame(()=>{ok.focus();});
-      };
+      bm.onclick=()=>openQtyPicker(row,[b1,bm],n,'確定',(qty)=>{putToStorage(st,rk,qty);renderInv();});
       row.appendChild(bm);
     }else{
       const ba1=document.createElement('button');ba1.className='rmake st-btn';ba1.textContent='存入';
       ba1.style.cssText='background:#3a7a28;color:#fff';
-      ba1.onclick=()=>{
-        const def2=EQUIP_DEF[rk];
-        if(def2&&def2.durability!=null&&W.invDur&&W.invDur[rk]){
-          const d=W.invDur[rk].pop();st[rk+'_dur']=(st[rk+'_dur']||[]);st[rk+'_dur'].push(d);
-          if(!W.invDur[rk].length)delete W.invDur[rk];
-        }
-        st[rk]=(st[rk]||0)+1;W.inv[rk]=0;renderStoragePanel();renderInv();
-      };
+      ba1.onclick=()=>{putToStorage(st,rk,1);renderStoragePanel();renderInv();};
       row.appendChild(ba1);
     }
     el.appendChild(row);
@@ -1211,7 +1197,7 @@ function getPanelFocusables(){
     ...Array.from(document.querySelectorAll('.uneq')),
     document.getElementById('eatBtn')].filter(Boolean);
   if(open.id==='journalPanel')return Array.from(open.querySelectorAll('.qitem'));
-  if(open.id==='storagePanel')return Array.from(open.querySelectorAll('.st-btn'));
+  if(open.id==='storagePanel')return Array.from(open.querySelectorAll('.st-btn')).filter(b=>b.style.display!=='none'&&b.offsetParent!==null);
   return[];
 }
 function updatePanelFocus(){
@@ -1286,13 +1272,8 @@ function playerDeath(){
           }
         }
       }}
-      W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={
-        ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
-      // 死亡後清除其他樓層快取，迫使玩家重新攻略地城（只保留有墓碑的樓層）
-      const _deatKey=W.dungeonIdx+'_'+W.dungeonFloor;
-      for(const _k of Object.keys(W.dungeons)){
-        if(_k.startsWith(W.dungeonIdx+'_')&&_k!==_deatKey)delete W.dungeons[_k];
-      }
+      cacheFloor(W.dungeonIdx+'_'+W.dungeonFloor);
+      // 保留各樓層已探索狀態（disc）與快取，玩家回頭取墓碑時不需重新探索
     }else{
       W.deathPos={x:W.px,y:W.py};
       W.obj[W.py*SIZE+W.px]=O.GRAVE;
@@ -1396,7 +1377,7 @@ function exitDungeon(){
   if(!W.inDungeon||!W._surface||_transitioning)return;_transitioning=true;
   const fade=document.getElementById('fade');fade.style.opacity=1;
   setTimeout(()=>{
-    W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
+    cacheFloor(W.dungeonIdx+'_'+W.dungeonFloor);
     const s=W._surface;
     W.ter=s.ter;W.obj=s.obj;W.aux=s.aux;W.disc=s.disc;
     W.px=s.px;W.py=s.py;W.enemies=s.enemies||[];W.animals=s.animals||[];
@@ -1407,6 +1388,13 @@ function exitDungeon(){
     fade.style.opacity=0;_transitioning=false;
   },650);
 }
+// 快取目前樓層狀態；spawnX/spawnY 永遠保留該層的固定入口（不被玩家當前位置覆蓋）
+function cacheFloor(key){
+  const prev=W.dungeons[key];
+  W.dungeons[key]={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,
+    spawnX:prev&&prev.spawnX!=null?prev.spawnX:W.px,
+    spawnY:prev&&prev.spawnY!=null?prev.spawnY:W.py};
+}
 function goDownstairs(){
   const mf=W.dungeonMaxFloor||5;
   if(!W.inDungeon||W.dungeonFloor>=mf){toast('這已經是最深層了');return;}
@@ -1414,7 +1402,7 @@ function goDownstairs(){
   const nextFloor=W.dungeonFloor+1;
   const fade=document.getElementById('fade');fade.style.opacity=1;
   setTimeout(()=>{
-    W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
+    cacheFloor(W.dungeonIdx+'_'+W.dungeonFloor);
     const key=W.dungeonIdx+'_'+nextFloor;
     if(!W.dungeons[key])W.dungeons[key]=genDungeon(dungeonSeed(),W.dungeonIdx,nextFloor,mf);
     const d=W.dungeons[key];
@@ -1436,7 +1424,7 @@ function goUpstairs(){
   const prevFloor=W.dungeonFloor-1;
   const fade=document.getElementById('fade');fade.style.opacity=1;
   setTimeout(()=>{
-    W.dungeons[W.dungeonIdx+'_'+W.dungeonFloor]={ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,enemies:W.enemies,spawnX:W.px,spawnY:W.py};
+    cacheFloor(W.dungeonIdx+'_'+W.dungeonFloor);
     const key=W.dungeonIdx+'_'+prevFloor;
     if(!W.dungeons[key])W.dungeons[key]=genDungeon(dungeonSeed(),W.dungeonIdx,prevFloor,W.dungeonMaxFloor||5);
     const d=W.dungeons[key];
@@ -1529,17 +1517,18 @@ function contextAction(){
             if(Math.random()<.55)gain('sap',1);W.obj[f.i]=O.NONE;wearEquip('hand');sfx('chop');},stam:6};
   }
   if(o===O.ROCK){
+    const tool=equippedHand();
     const chk=checkHarvest('stone');
     const auxVal=W.aux[f.i]||0;
     // aux < 0 encodes ore type: -2=silver_ore, -3=gold_ore, -4=mithril_ore
     const oreType={'-2':'silver_ore','-3':'gold_ore','-4':'mithril_ore'}[auxVal]||null;
-    const oreMul={silver_ore:1,gold_ore:1,mithril_ore:1}[oreType]||1;
     const hasPick=chk.ok&&!chk.bare;
     // 礦石需對應等級稿
     const orePickReq={silver_ore:'silver_pick',gold_ore:'gold_pick',mithril_ore:'mithril_pick'};
     const reqPick=oreType?orePickReq[oreType]:null;
-    if(oreType&&reqPick&&(!tool||tool!==reqPick)){
-      return{label:'需要'+EQUIP_DEF[reqPick]?.name||'高級稿'+'才能採集',run(){toast('需要更好的稿子');sfx('no');},stam:0,soft:1};
+    if(oreType&&reqPick&&tool!==reqPick){
+      const reqName=EQUIP_DEF[reqPick]?.name||'高級稿';
+      return{label:'需要'+reqName+'才能採集',run(){toast('需要'+reqName+'才能採集這種礦');sfx('no');},stam:0,soft:1};
     }
     const rockLabel=oreType?(oreType==='silver_ore'?'採集銀礦石':oreType==='gold_ore'?'採集金礦石':'採集秘銀礦'):(chk.bare?'徒手鑿石(效率低,先湊 3 顆做石稿)':'開採岩石');
     return{label:rockLabel,run(){
@@ -1604,13 +1593,6 @@ function contextAction(){
     if(tool==='fishing_rod')
       return{label:'釣魚',run(){startFishing(f);},stam:3};
     return{label:'水面波光粼粼',run(){toast('可以蓋木橋,或持釣竿互動釣魚');},stam:0,soft:1};
-  }
-  // 地形復原（岩地→草地）
-  if(t===T.ROCKY){
-    return{label:'翻土復原（恢復草地）',run(){
-      if(W.stam<5){toast('體力不足，無法翻土');sfx('no');return;}
-      W.stam-=5;W.ter[f.i]=T.GRASS;sfx('build');toast('🌿 岩地恢復為草地');mmDirty=true;renderInv();
-    },stam:5};
   }
   // 地形拆除（石板路/木橋）
   if(t===T.PATH||t===T.BRIDGE){
@@ -2294,12 +2276,9 @@ function save(){
   try{
     // 地城中存檔：儲存地面狀態，下次從地面開始
     const inD=W.inDungeon&&W._surface;
-    // 同步當前地城樓層到快取（保留已探索狀態）
+    // 同步當前地城樓層到快取（保留已探索狀態與固定入口）
     if(inD){
-      const key=W.dungeonIdx+'_'+W.dungeonFloor;
-      W.dungeons[key]=W.dungeons[key]||{};
-      Object.assign(W.dungeons[key],{ter:W.ter,obj:W.obj,aux:W.aux,disc:W.disc,
-        enemies:W.enemies,spawnX:W.px,spawnY:W.py});
+      cacheFloor(W.dungeonIdx+'_'+W.dungeonFloor);
     }
     // 序列化地城快取（僅存 obj/disc/enemies，ter 從 seed 重建）
     const dungeonCache={};
