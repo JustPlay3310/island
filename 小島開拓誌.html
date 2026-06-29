@@ -320,6 +320,9 @@ document.getElementById('mute').onclick=function(){
 /* ══════════ 工具效果 ══════════ */
 function equippedHand(){return W&&W.equipped&&W.equipped.hand||null;}
 function equippedWeapon(){return W&&W.equipped&&W.equipped.weapon||null;}
+// 任何腳部裝備都給 +40% 移速；任何手部裝備都給 -40% 採集體力（含金屬升級版）
+function hasBoots(){return !!(W&&W.equipped&&W.equipped.feet);}
+function hasGloves(){return !!(W&&W.equipped&&W.equipped.hands);}
 function checkHarvest(resKind){
   const tool=equippedHand();
   if(resKind==='stone'){
@@ -1648,7 +1651,7 @@ function gain(k,n,f){
 
 function executeAction(a){
   if(!a)return false;
-  const stamCost=a.stam>0&&W.equipped.hands==='gloves'?Math.round(a.stam*0.6):a.stam;
+  const stamCost=a.stam>0&&hasGloves()?Math.round(a.stam*0.6):a.stam;
   if(stamCost>0&&W.stam<stamCost){toast('太累了……吃點東西或到火邊休息');sfx('no');return false;}
   W.stam-=stamCost;a.run();mmDirty=true;renderInv();checkQuest();return true;
 }
@@ -1889,7 +1892,7 @@ function tryMove(d){
   if([O.TREE,O.ROCK,O.RUIN,O.FIRE,O.HUT,O.WELL,O.MONU,O.SAPLING,O.WORKBENCH,O.LOOM,O.FORGE,O.CHEST,O.STORAGE].includes(o))return;
   if(W._fishing&&W._fishing.state!=='idle')W._fishing={state:'idle'};
   W.px=nx;W.py=ny;
-  const speedMul=W.equipped.feet==='boots'?0.65:1;
+  const speedMul=hasBoots()?0.65:1;
   moveCd=((t===T.PATH||t===T.BRIDGE)?0.16:0.25)*speedMul;
   discover();
   // 樓梯自動觸發
@@ -2323,8 +2326,9 @@ function load(){
         const parts=k.split('_');const ri=+parts[0],fl=+parts[1];
         const dseed=ri===100?(d.raidSeedStr||d.seedStr):d.seedStr;
         const fresh=genDungeon(dseed,ri,fl,d.dungeonMaxFloor||5);
+        // spawnX/spawnY 一律以 genDungeon 重生的固定入口為準（修復舊存檔把玩家/死亡位置寫成入口的問題）
         dungeons[k]={...fresh,obj:Uint8Array.from(ds.obj),disc:Uint8Array.from(ds.disc),
-          enemies:ds.enemies||[],spawnX:ds.spawnX||fresh.spawnX,spawnY:ds.spawnY||fresh.spawnY};
+          enemies:ds.enemies||[],spawnX:fresh.spawnX,spawnY:fresh.spawnY};
       }catch(e2){}
     }
     // 將舊 invDur 格式（{id:number}）遷移至新陣列格式（{id:number[]}）
@@ -2395,7 +2399,7 @@ function loop(ts){
     if(prevTod<0.24&&W.tod>=0.24){W.day++;toast('☀️ 第 '+W.day+' 天');}
     // 移動（含 deadlock：新方向先轉身鎖定，時間 = 移動冷卻/2）
     moveCd-=dt;
-    const speedMul=W.equipped.feet==='boots'?0.65:1;
+    const speedMul=hasBoots()?0.65:1;
     const d=heldDir>=0?heldDir:dirFromKeys();
     if(d>=0){
       if(d!==prevDir){W.face=d;turnLock=0.25*speedMul/2;}
