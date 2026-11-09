@@ -1,0 +1,7 @@
+{
+  "name": "island-tools",
+  "private": true,
+  "description": "小島開拓誌的檢查工具：語法檢查、無頭瀏覽器冒煙測試、回歸測試",
+  "scripts": { "check": "node check.js", "check:fast": "node check.js --fast" },
+  "dependencies": { "playwright-core": "^1.65.0" }
+}

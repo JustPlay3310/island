@@ -4,3 +4,6 @@ Thumbs.db
 .claude/*.jsonl
 # 保留這份開發紀錄
 !.claude/833538ef-59de-4a7a-b4cf-44a543ee90f2.jsonl
+
+# 檢查工具的相依套件
+tools/node_modules/

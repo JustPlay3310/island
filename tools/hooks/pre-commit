@@ -1,0 +1,9 @@
+#!/bin/sh
+# 提交前自動檢查（語法 + 冒煙 + 回歸）。沒通過就取消這次 commit。
+# 啟用方式：bash tools/setup.sh（會設定 git config core.hooksPath tools/hooks）
+command -v node >/dev/null 2>&1 || PATH="/d/Install/node:$PATH"   # 公司筆電的可攜版 Node
+if ! node tools/check.js; then
+  echo ""
+  echo "檢查沒通過，commit 已取消。請修好上面列出的問題後再提交。"
+  exit 1
+fi
