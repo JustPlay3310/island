@@ -1,4 +1,4 @@
-// 小島開拓誌 測試框架（與 qwen_weighting_test/island-bench/harness.js 同源）
+// 小島開拓誌 測試框架（tools/bench/ 也共用這一份）
 // - 用本機 HTTP 伺服器提供遊戲檔，送出主 HTML 時在 IIFE 結尾注入 window.__ev（直接 eval，可讀寫閉包內的 W 等狀態）
 // - 不需修改遊戲原始碼，任何歷史版本都能測
 // - 瀏覽器：CHROME_PATH 環境變數 > 常見安裝位置 > Playwright 自帶 chromium

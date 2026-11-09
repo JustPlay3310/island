@@ -7,3 +7,8 @@ Thumbs.db
 
 # 檢查工具的相依套件
 tools/node_modules/
+
+# island-bench 執行產物
+tools/bench/.snap/
+tools/bench/runs/
+tools/bench/.*.log
