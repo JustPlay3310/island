@@ -13,7 +13,7 @@
 | Node / git / cmake | v22.22.1 / 2.53.0 / 4.2.3 |
 | llama.cpp | `~/llama.cpp-latest`，commit `956591f4570aa6636895d90439892fef7c075b17`（2026-11-11） |
 | OpenCode | 1.19.5（npm `opencode-ai`，裝在 `~/.npm-global`） |
-| 模型位置 | `/home/user/llama.cpp/models/`（→ `/data/llama.cpp/models`，依使用者指定） |
+| 模型位置 | `/data/models/`（`~/models` 捷徑；2026-11-13 從 `/data/llama.cpp/models` 搬出，舊 llama.cpp 已刪除，只保留 `~/llama.cpp-latest`） |
 
 ### 與指南不同之處
 
@@ -74,7 +74,7 @@
 
 ```sh
 HIP_VISIBLE_DEVICES=0 ~/llama.cpp-latest/build-rocm/bin/llama-server \
-  -m /home/user/llama.cpp/models/Qwen3.8-27B-UD-Q3_K_XL.gguf --alias local \
+  -m /data/models/Qwen3.8-27B-UD-Q3_K_XL.gguf --alias local \
   --host 127.0.0.1 --port 8080 \
   -ngl 99 -c 65536 -n 8192 --parallel 1 \
   --flash-attn on -ctk q8_0 -ctv q8_0 --jinja --no-context-shift \
@@ -286,7 +286,7 @@ T05 的寫法與正解幾乎一致，但檢查過原始版本已有 `W._surface=
 
 ```sh
 HIP_VISIBLE_DEVICES=0 ~/llama.cpp-latest/build-rocm/bin/llama-server \
-  -m /home/user/llama.cpp/models/Qwen3.8-27B-UD-Q3_K_XL.gguf --alias local \
+  -m /data/models/Qwen3.8-27B-UD-Q3_K_XL.gguf --alias local \
   --host 127.0.0.1 --port 8080 \
   -ngl 99 -c 65536 -n 8192 --parallel 1 \
   --flash-attn on -ctk q8_0 -ctv q8_0 --jinja --no-context-shift \
